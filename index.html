@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Aplikasi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 id="dashboard-title">Dashboard Aplikasi</h1>
+            <div class="theme-selector">
+                <button id="theme-toggle" class="btn-icon" title="Ubah tema">
+                    <i class="fas fa-palette"></i>
+                </button>
+                <button id="admin-btn" class="btn-icon" title="Admin">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="search-bar">
+            <i class="fas fa-search"></i>
+            <input type="text" id="search-input" placeholder="Cari aplikasi...">
+        </div>
+
+        <div class="apps-grid" id="apps-container">
+            <!-- Aplikasi akan dimuat di sini -->
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Memuat aplikasi...</p>
+        </div>
+
+        <div class="no-results" id="no-results" style="display: none;">
+            <i class="fas fa-search"></i>
+            <p>Tidak ada aplikasi yang ditemukan</p>
+        </div>
+    </div>
+
+    <footer>
+        <p>Dashboard Apps v1.0 | Total: <span id="app-count">0</span> aplikasi</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
