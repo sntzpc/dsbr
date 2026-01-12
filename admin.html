@@ -11,15 +11,29 @@
 <body>
     <div class="admin-container" id="login-page">
         <div class="login-box">
-            <h2><i class="fas fa-lock"></i> Admin Login</h2>
+            <h2><i class="fas fa-lock"></i> Login</h2>
+
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Contoh: admin">
+            </div>
+
             <div class="form-group">
                 <label for="password">Password:</label>
                 <input type="password" id="password" placeholder="Masukkan password">
             </div>
-            <button id="login-btn" class="btn btn-primary">
-                <i class="fas fa-sign-in-alt"></i> Login
-            </button>
-            <p class="info-note">Password default: 123456</p>
+
+            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button id="login-btn" class="btn btn-primary" type="button">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+                <button id="btn-go-dashboard" class="btn btn-secondary" type="button" title="Kembali ke Dashboard">
+                    <i class="fas fa-home"></i> Dashboard
+                </button>
+            </div>
+
+            <p class="info-note">Default password pertama kali: <b>user123</b></p>
+
             <div id="login-error" class="error-message" style="display: none;">
                 Password salah!
             </div>
@@ -29,23 +43,36 @@
     <div class="admin-container" id="admin-page" style="display: none;">
         <header class="admin-header">
             <h1><i class="fas fa-cogs"></i> Admin Dashboard</h1>
-            <div class="admin-actions">
-                <button id="logout-btn" class="btn btn-secondary">
+            <div class="admin-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button id="btn-dashboard" class="btn btn-secondary" type="button">
+                    <i class="fas fa-home"></i> Dashboard
+                </button>
+                <button id="logout-btn" class="btn btn-secondary" type="button">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </button>
             </div>
         </header>
 
         <div class="admin-nav">
-            <button class="nav-btn active" data-tab="apps-tab">
-                <i class="fas fa-th"></i> Kelola Aplikasi
-            </button>
-            <button class="nav-btn" data-tab="theme-tab">
-                <i class="fas fa-palette"></i> Tema
-            </button>
-            <button class="nav-btn" data-tab="password-tab">
-                <i class="fas fa-key"></i> Ganti Password
-            </button>
+        <button class="nav-btn active" data-tab="apps-tab">
+            <i class="fas fa-th"></i> Kelola Aplikasi
+        </button>
+
+        <button class="nav-btn" data-tab="users-tab" data-admin-only="1">
+            <i class="fas fa-users-cog"></i> Kelola User
+        </button>
+
+        <button class="nav-btn" data-tab="groups-tab" data-admin-only="1">
+            <i class="fas fa-layer-group"></i> Kelola Group Akses
+        </button>
+
+        <button class="nav-btn" data-tab="theme-tab" data-admin-only="1">
+            <i class="fas fa-palette"></i> Tema
+        </button>
+
+        <button class="nav-btn" data-tab="password-tab">
+            <i class="fas fa-key"></i> Ganti Password
+        </button>
         </div>
 
         <div class="admin-content">
@@ -76,6 +103,112 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- Tab Kelola User (ADMIN ONLY) -->
+            <div id="users-tab" class="tab-content">
+            <div class="tab-header">
+                <h2><i class="fas fa-users-cog"></i> Kelola User</h2>
+                <button id="btn-add-user" class="btn btn-primary" type="button">
+                <i class="fas fa-user-plus"></i> Tambah User
+                </button>
+            </div>
+
+            <div class="table-container">
+                <table id="users-table">
+                <thead>
+                    <tr>
+                    <th>No</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Group</th>
+                    <th>Active</th>
+                    <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
+                </table>
+            </div>
+            </div>
+
+            <!-- Tab Kelola Group Akses (ADMIN ONLY) -->
+            <div id="groups-tab" class="tab-content">
+            <div class="tab-header">
+                <h2><i class="fas fa-layer-group"></i> Kelola Group Akses</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button id="btn-add-group" class="btn btn-secondary" type="button">
+                    <i class="fas fa-plus"></i> Tambah Group
+                </button>
+                <button id="btn-del-group" class="btn btn-secondary" type="button">
+                    <i class="fas fa-trash"></i> Hapus Group
+                </button>
+                </div>
+            </div>
+
+            <div class="theme-controls" style="margin-bottom:18px;">
+                <div class="form-group" style="margin:0; width:100%;">
+                <label for="group-select" style="min-width:140px;">Pilih Group</label>
+                <select id="group-select"></select>
+                </div>
+                <div class="info-note" style="margin-top:10px;">
+                Drag & drop aplikasi dari “Tersedia” ke “Diizinkan”. Klik Simpan.
+                </div>
+                <button id="btn-save-group" class="btn btn-primary" type="button" style="margin-top:12px;">
+                <i class="fas fa-save"></i> Simpan Akses Group
+                </button>
+            </div>
+
+            <div class="dd-wrap">
+                <div class="dd-col">
+                <h3 class="dd-title"><i class="fas fa-list"></i> Aplikasi Tersedia</h3>
+                <div id="dd-available" class="dd-list" data-drop="available"></div>
+                </div>
+                <div class="dd-col">
+                <h3 class="dd-title"><i class="fas fa-check-circle"></i> Aplikasi Diizinkan</h3>
+                <div id="dd-allowed" class="dd-list" data-drop="allowed"></div>
+                </div>
+            </div>
+            </div>
+
+            <!-- Modal Tambah User -->
+            <div id="user-modal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:520px;">
+                <div class="modal-header">
+                <h3><i class="fas fa-user-plus"></i> Tambah User</h3>
+                <button class="modal-close" id="user-modal-close" type="button">&times;</button>
+                </div>
+                <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-username">Username</label>
+                    <input id="new-username" type="text" placeholder="contoh: 202501001">
+                </div>
+
+                <div class="form-group">
+                  <label for="new-nama">Nama</label>
+                  <input id="new-nama" type="text" placeholder="contoh: BUDI SANTOSO">
+                </div>
+
+                <div class="form-group">
+                    <label for="new-role">Role</label>
+                    <select id="new-role">
+                    <option value="user" selected>user</option>
+                    <option value="admin">admin</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="new-group">Group</label>
+                    <select id="new-group"></select>
+                </div>
+
+                <div class="info-note">Password awal otomatis: <b>user123</b></div>
+                <div id="user-modal-msg" class="error-message" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                <button id="btn-cancel-user" class="btn btn-secondary" type="button">Batal</button>
+                <button id="btn-save-user" class="btn btn-primary" type="button">Simpan</button>
+                </div>
+            </div>
             </div>
 
             <!-- Tab Tema -->

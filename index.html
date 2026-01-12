@@ -19,8 +19,17 @@
                 <button id="admin-btn" class="btn-icon" title="Admin">
                     <i class="fas fa-cog"></i>
                 </button>
+                <button id="logout-btn" class="btn-icon btn-danger" title="Logout">
+                    <i class="fas fa-door-open"></i>
+                </button>
             </div>
         </header>
+
+        <!-- USER BADGE -->
+        <div class="user-badge" id="user-badge" style="display:none;">
+            <i class="fas fa-user-circle"></i>
+            <span id="user-name">USER</span>
+        </div>
 
         <div class="search-bar">
             <i class="fas fa-search"></i>
@@ -45,6 +54,36 @@
     <footer>
         <p>Dashboard Apps v1.0 | Total: <span id="app-count">0</span> aplikasi</p>
     </footer>
+
+    <!-- LOGIN MODAL -->
+        <div id="login-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="modal-header">
+            <h3><i class="fas fa-user-lock"></i> Login Dashboard</h3>
+            <button class="modal-close" id="login-close" type="button" title="Tutup">&times;</button>
+            </div>
+            <div class="modal-body">
+            <div class="form-group">
+                <label for="login-username">Username</label>
+                <input type="text" id="login-username" placeholder="Contoh: admin">
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Masukkan password">
+            </div>
+            <div class="info-note" style="margin-top:6px;">
+                Default password pertama kali: <b>user123</b>
+            </div>
+
+            <div id="login-msg" class="error-message" style="display:none; margin-top:12px;"></div>
+            </div>
+            <div class="modal-footer">
+            <button id="login-submit" class="btn btn-primary" type="button">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </button>
+            </div>
+        </div>
+        </div>
 
     <script src="script.js"></script>
 </body>
