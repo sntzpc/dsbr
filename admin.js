@@ -1,5 +1,5 @@
 // Konfigurasi Google Apps Script
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyvHcSzNYZaTow79OYr4Fev0cbPwBkTTk8os4zM7s_tDLTTFtgXk9mLZtCYlZIv9y1oJQ/exec';
+const SCRIPT_URL = (window.APP_CONFIG && window.APP_CONFIG.SCRIPT_URL) || '';
 
 // ===== Session Keys =====
 const LS_SESSION = 'dash_session_v1'; // {token, username, role, group, exp}
@@ -39,6 +39,18 @@ const loginError = document.getElementById('login-error');
 
 const btnGoDashboard = document.getElementById('btn-go-dashboard');
 const btnDashboardTop = document.getElementById('btn-dashboard');
+const pageLoader = document.getElementById('page-loader');
+
+function showPageLoader(text){
+  if (!pageLoader) return;
+  const t = pageLoader.querySelector('.pl-text');
+  if (t && text) t.textContent = text;
+  pageLoader.style.display = 'flex';
+}
+function hidePageLoader(){
+  if (!pageLoader) return;
+  pageLoader.style.display = 'none';
+}
 
 // Tabs
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -91,6 +103,12 @@ const newRole = document.getElementById('new-role');
 const newGroup = document.getElementById('new-group');
 const userModalMsg = document.getElementById('user-modal-msg');
 
+// Users list controls
+const usersSearch = document.getElementById('users-search');
+const usersPageSize = document.getElementById('users-page-size');
+const usersPager = document.getElementById('users-pager');
+const usersPagerInfo = document.getElementById('users-pager-info');
+
 // Groups tab
 const groupSelect = document.getElementById('group-select');
 const ddAvailable = document.getElementById('dd-available');
@@ -101,6 +119,35 @@ const btnDelGroup = document.getElementById('btn-del-group');
 
 let groupsMap = {}; // group -> {app_ids:[]}
 let usersData = [];
+// ===== Users table state (paging + search) =====
+const UsersUI = {
+  q: '',
+  page: 1,
+  pageSize: 20,
+  filtered: []
+};
+
+function norm_(s){ return String(s||'').toLowerCase().trim(); }
+
+function applyUsersFilter_(){
+  const q = norm_(UsersUI.q);
+  const src = Array.isArray(usersData) ? usersData : [];
+  if (!q){
+    UsersUI.filtered = src.slice();
+  } else {
+    UsersUI.filtered = src.filter(u => {
+      const hay = [
+        u.username, u.nama, u.group
+      ].map(norm_).join(' ');
+      return hay.includes(q);
+    });
+  }
+
+  const totalPages = Math.max(1, Math.ceil(UsersUI.filtered.length / UsersUI.pageSize));
+  if (UsersUI.page > totalPages) UsersUI.page = totalPages;
+  if (UsersUI.page < 1) UsersUI.page = 1;
+}
+
 let currentGroup = 'default';
 
 // ===== UI basics =====
@@ -160,34 +207,40 @@ function showNotification(message, type = 'info') {
 
 // ===== Role restrictions =====
 function applyRoleUI(){
-  const isAdmin = (me?.role === 'admin');
+  const isPriv = (me?.role === 'admin' || me?.role === 'master');
 
-  // hide nav buttons that are admin-only
+  // tampilkan tombol/tab yang butuh privilege (data-admin-only="1")
   navBtns.forEach(btn => {
-    const adminOnly = btn.getAttribute('data-admin-only') === '1';
-    if (adminOnly) btn.style.display = isAdmin ? '' : 'none';
+    const privOnly = btn.getAttribute('data-admin-only') === '1';
+    if (privOnly) btn.style.display = isPriv ? '' : 'none';
   });
 
-  // hide admin-only tab content blocks
   const usersTab = document.getElementById('users-tab');
   const groupsTab = document.getElementById('groups-tab');
   const themeTab = document.getElementById('theme-tab');
   const appsTab = document.getElementById('apps-tab');
 
-  if (!isAdmin){
-    // user hanya bisa password-tab
+  if (!isPriv){
+    // user biasa hanya boleh ganti password
     if (usersTab) usersTab.style.display = 'none';
     if (groupsTab) groupsTab.style.display = 'none';
     if (themeTab) themeTab.style.display = 'none';
     if (appsTab) appsTab.style.display = 'none';
 
-    // force active tab = password
     navBtns.forEach(b => b.classList.remove('active'));
     tabContents.forEach(c => c.classList.remove('active'));
+
     const passBtn = [...navBtns].find(b => b.getAttribute('data-tab') === 'password-tab');
     if (passBtn) passBtn.classList.add('active');
+
     const passTab = document.getElementById('password-tab');
     if (passTab) passTab.classList.add('active');
+  } else {
+    // privileged: pastikan tab apps visible (master/admin)
+    if (appsTab) appsTab.style.display = '';
+    if (usersTab) usersTab.style.display = '';
+    if (groupsTab) groupsTab.style.display = '';
+    if (themeTab) themeTab.style.display = '';
   }
 }
 
@@ -241,24 +294,31 @@ function setupTabs(){
 // ===== Load admin data =====
 async function loadAdminData(){
   try{
-    // Apps (untuk admin only)
-    if (me.role === 'admin'){
-      const appsResult = await apiGet(`?action=getApps`);
+    const isPriv = (me?.role === 'admin' || me?.role === 'master');
+
+    // Apps untuk admin panel (master full, admin filtered by group)
+    if (isPriv){
+      const appsResult = await apiGet(`?action=getAppsForAdminPanel&token=${encodeURIComponent(me.token)}`);
       if (appsResult.success){
         appsData = appsResult.data || [];
+        displayAppsTable();
+      } else {
+        appsData = [];
         displayAppsTable();
       }
     }
 
-    // Theme (admin only)
-    const themeResult = await apiGet(`?action=getTheme`);
-    if (themeResult.success){
-      currentTheme = themeResult.data;
-      updateThemeInputs();
+    // Theme (privileged)
+    if (isPriv){
+      const themeResult = await apiGet(`?action=getTheme`);
+      if (themeResult.success){
+        currentTheme = themeResult.data;
+        updateThemeInputs();
+      }
     }
 
-    // Users + Groups (admin only)
-    if (me.role === 'admin'){
+    // Users + Groups (privileged)
+    if (isPriv){
       await loadUsers();
       await loadGroups();
     }
@@ -453,7 +513,7 @@ function updateThemePreview(){
   }
 }
 async function saveTheme(){
-  if (me.role !== 'admin') return showNotification('Tidak punya izin.', 'error');
+  if (!(me.role === 'admin' || me.role === 'master')) return showNotification('Tidak punya izin.', 'error');
   try{
     const result = await apiPost('saveTheme', {
       token: me.token,
@@ -526,21 +586,48 @@ async function loadUsers(){
   const result = await apiGet(`?action=listUsers&token=${encodeURIComponent(me.token)}`);
   if (!result.success) throw new Error(result.message||'Gagal load users');
   usersData = result.data || [];
+
+  // sync pageSize from UI (if exists)
+  if (usersPageSize){
+    const v = parseInt(usersPageSize.value, 10);
+    if (!isNaN(v) && v > 0) UsersUI.pageSize = v;
+  }
+
+  UsersUI.page = 1;
   renderUsersTable();
 }
+
 function renderUsersTable(){
+  if (!usersTBody) return;
+
+  applyUsersFilter_();
+
+  const total = UsersUI.filtered.length;
+  const pageSize = UsersUI.pageSize;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, UsersUI.page), totalPages);
+
+  const startIdx = (page - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, total);
+  const rows = UsersUI.filtered.slice(startIdx, endIdx);
+
   usersTBody.innerHTML = '';
-  if (!usersData.length){
-    usersTBody.innerHTML = `<tr><td colspan="6" style="padding:20px; text-align:center;">Belum ada user</td></tr>`;
+
+  if (!total){
+    usersTBody.innerHTML = `<tr><td colspan="6" style="padding:20px; text-align:center;">Tidak ada user</td></tr>`;
+    if (usersPagerInfo) usersPagerInfo.textContent = 'Menampilkan 0 dari 0';
+    if (usersPager) usersPager.innerHTML = '';
     return;
   }
-  usersData.forEach((u, idx) => {
+
+  rows.forEach((u, i) => {
+    const no = startIdx + i + 1;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${idx+1}</td>
-      <td>${u.username}</td>
-      <td>${u.role}</td>
-      <td>${u.group}</td>
+      <td>${no}</td>
+      <td><b>${u.username || ''}</b></td>
+      <td>${u.nama || '-'}</td>
+      <td>${u.group || '-'}</td>
       <td>${u.active ? 'YA' : 'TIDAK'}</td>
       <td>
         <div class="action-buttons">
@@ -556,26 +643,57 @@ function renderUsersTable(){
     usersTBody.appendChild(tr);
   });
 
-  usersTBody.querySelectorAll('button[data-act="reset"]').forEach(b => {
-    b.addEventListener('click', async ()=> {
-      const uname = b.dataset.u;
-      if (!confirm(`Reset password ${uname} menjadi user123?`)) return;
-      const r = await apiPost('resetUserPassword', { token: me.token, username: uname });
-      if (r.success){ showNotification('Password direset ke user123', 'success'); }
-      else showNotification(r.message||'Gagal reset', 'error');
+  // pager info
+  if (usersPagerInfo){
+    usersPagerInfo.textContent = `Menampilkan ${startIdx+1}–${endIdx} dari ${total} (Hal ${page}/${totalPages})`;
+  }
+
+  // render pager buttons
+  renderUsersPager_(page, totalPages);
+}
+
+function renderUsersPager_(page, totalPages){
+  if (!usersPager) return;
+  usersPager.innerHTML = '';
+
+  const mkBtn = (label, p, opts={}) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    if (opts.active) b.classList.add('active');
+    if (opts.disabled) b.disabled = true;
+    b.addEventListener('click', ()=>{
+      UsersUI.page = p;
+      renderUsersTable();
     });
+    return b;
+  };
+
+  const mkDots = () => {
+    const s = document.createElement('span');
+    s.className = 'dots';
+    s.textContent = '…';
+    return s;
+  };
+
+  // Prev
+  usersPager.appendChild(mkBtn('‹', Math.max(1, page-1), {disabled: page<=1}));
+
+  // pages with ellipsis
+  const pages = new Set([1, totalPages, page-1, page, page+1, page-2, page+2]);
+  const list = [...pages].filter(p => p>=1 && p<=totalPages).sort((a,b)=>a-b);
+
+  let last = 0;
+  list.forEach(p=>{
+    if (p - last > 1){
+      if (last !== 0) usersPager.appendChild(mkDots());
+    }
+    usersPager.appendChild(mkBtn(String(p), p, {active: p===page}));
+    last = p;
   });
 
-  usersTBody.querySelectorAll('button[data-act="del"]').forEach(b => {
-    b.addEventListener('click', async ()=> {
-      const uname = b.dataset.u;
-      if (uname === me.username) return showNotification('Tidak bisa menghapus user yang sedang login.', 'error');
-      if (!confirm(`Hapus user ${uname}?`)) return;
-      const r = await apiPost('deleteUser', { token: me.token, username: uname });
-      if (r.success){ showNotification('User dihapus', 'success'); await loadUsers(); }
-      else showNotification(r.message||'Gagal hapus', 'error');
-    });
-  });
+  // Next
+  usersPager.appendChild(mkBtn('›', Math.min(totalPages, page+1), {disabled: page>=totalPages}));
 }
 
 function openUserModal(){
@@ -615,9 +733,63 @@ function setupUsersUI(){
       userModalMsg.style.display = 'block';
     }
   });
+    // Search
+  if (usersSearch){
+    usersSearch.addEventListener('input', ()=>{
+      UsersUI.q = usersSearch.value || '';
+      UsersUI.page = 1;
+      renderUsersTable();
+    });
+  }
+
+  // Page size
+  if (usersPageSize){
+    usersPageSize.addEventListener('change', ()=>{
+      const v = parseInt(usersPageSize.value, 10);
+      UsersUI.pageSize = (!isNaN(v) && v > 0) ? v : 20;
+      UsersUI.page = 1;
+      renderUsersTable();
+    });
+  }
+
+  // Delegated actions (reset/hapus) supaya tidak rebind tiap render
+  if (usersTBody && !usersTBody.dataset.boundActions){
+    usersTBody.dataset.boundActions = '1';
+    usersTBody.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+
+      const act = btn.dataset.act;
+      const uname = btn.dataset.u;
+
+      if (act === 'reset'){
+        if (!confirm(`Reset password untuk:\n${uname}\n\nMenjadi: user123 ?`)) return;
+        const r = await apiPost('resetUserPassword', { token: me.token, username: uname });
+        if (r.success) showNotification('Password direset ke user123', 'success');
+        else showNotification(r.message||'Gagal reset', 'error');
+      }
+
+      if (act === 'del'){
+        if (uname === me.username) return showNotification('Tidak bisa menghapus user yang sedang login.', 'error');
+        if (!confirm(`Hapus user:\n${uname}\n\nTindakan ini tidak bisa dibatalkan.`)) return;
+        const r = await apiPost('deleteUser', { token: me.token, username: uname });
+        if (r.success){
+          showNotification('User dihapus', 'success');
+          await loadUsers(); // refresh list + pager
+        } else showNotification(r.message||'Gagal hapus', 'error');
+      }
+    });
+  }
 }
 
-// ===== Groups access (admin only) =====
+// ===== Group filtering helper (hide master group for admin) =====
+function canSeeGroupName_(gname){
+  gname = String(gname||'').trim().toLowerCase();
+  // admin tidak boleh lihat group "master"
+  if (me?.role === 'admin' && gname === 'master') return false;
+  return true;
+}
+
 async function loadGroups(){
   const res = await apiGet(`?action=listGroups&token=${encodeURIComponent(me.token)}`);
   if (!res.success) throw new Error(res.message||'Gagal load groups');
@@ -627,30 +799,33 @@ async function loadGroups(){
     groupsMap[g.group] = { app_ids: (g.app_ids || []).map(String) };
   });
 
-  // fill select
-  groupSelect.innerHTML = '';
-  Object.keys(groupsMap).sort().forEach(gname => {
+  // fill select (filtered by role)
+    groupSelect.innerHTML = '';
+    const groupNames = Object.keys(groupsMap).sort().filter(canSeeGroupName_);
+    groupNames.forEach(gname => {
     const opt = document.createElement('option');
     opt.value = gname;
     opt.textContent = gname;
     groupSelect.appendChild(opt);
-  });
+    });
 
-  // sync newGroup options in user modal
-  newGroup.innerHTML = '';
-  Object.keys(groupsMap).sort().forEach(gname => {
+    // sync newGroup options in user modal (filtered by role)
+    newGroup.innerHTML = '';
+    groupNames.forEach(gname => {
     const opt = document.createElement('option');
     opt.value = gname;
     opt.textContent = gname;
     newGroup.appendChild(opt);
-  });
+    });
 
-  // choose current
-  if (!groupsMap[currentGroup]) currentGroup = Object.keys(groupsMap)[0] || 'default';
-  groupSelect.value = currentGroup;
+    // choose current (must be visible)
+    if (!groupsMap[currentGroup] || !canSeeGroupName_(currentGroup)){
+    currentGroup = groupNames.includes('default') ? 'default' : (groupNames[0] || 'default');
+    }
+    groupSelect.value = currentGroup;
 
   // Ensure apps loaded (for drag list)
-  const appsRes = await apiGet(`?action=getApps`);
+  const appsRes = await apiGet(`?action=getAppsForAdminPanel&token=${encodeURIComponent(me.token)}`);
   if (appsRes.success) appsData = appsRes.data || [];
 
   renderGroupDnD();
@@ -844,7 +1019,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         if (note) note.innerHTML = 'Login dilakukan dari Dashboard. Klik <b>Dashboard</b> untuk login.';
     }catch(e){}
 
-  const ok = await checkSession();
+  showPageLoader('Memuat Admin...');
+    const ok = await checkSession();
     if (!ok){
     // ✅ tidak pakai login admin lagi, arahkan ke dashboard (modal login ada di sana)
     loginPage.style.display = 'none'; // hide, tidak dihapus
@@ -856,6 +1032,20 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     loginPage.style.display = 'none';
     showAdminPage();
     applyRoleUI();
+    try{
+      const optMaster = [...newRole.options].find(o => o.value === 'master');
+      if (me?.role === 'master'){
+        if (!optMaster){
+          const o = document.createElement('option');
+          o.value = 'master';
+          o.textContent = 'master';
+          newRole.appendChild(o);
+        }
+      } else {
+        if (optMaster) optMaster.remove();
+      }
+    }catch(e){}
     await loadAdminData();
+    hidePageLoader();
     }
 });

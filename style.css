@@ -664,3 +664,183 @@ tbody tr:hover {
   color: var(--text-color);
   text-transform: uppercase;
 }
+
+/* Page Loader Overlay */
+.page-loader{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px);
+  z-index: 2000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 20px;
+}
+.pl-card{
+  width: min(360px, 92vw);
+  background: var(--secondary-color);
+  color: var(--text-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+  display:flex;
+  align-items:center;
+  gap: 14px;
+}
+.pl-spin{
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid rgba(0,0,0,.15);
+  border-top-color: var(--primary-color);
+  animation: plspin 1s linear infinite;
+}
+.pl-text{
+  font-weight: 700;
+}
+@keyframes plspin{ to { transform: rotate(360deg); } }
+
+/* Users table toolbar + pager */
+.table-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin: 10px 0 12px;
+}
+
+.tt-search{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  border-radius: 12px;
+  background: var(--secondary-color);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  min-width: min(520px, 92vw);
+}
+
+.tt-search i{ color: var(--text-secondary); }
+.tt-search input{
+  border:none;
+  outline:none;
+  background:transparent;
+  color: var(--text-color);
+  width: 100%;
+  font-size: 14px;
+}
+
+.tt-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background: var(--secondary-color);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.tt-label{
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+#users-page-size{
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--secondary-color);
+  color: var(--text-color);
+  font-weight: 700;
+}
+
+.pager-wrap{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top: 12px;
+  padding: 10px 0;
+}
+
+.pager-info{
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pager{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.pager button{
+  border: 1px solid var(--border-color);
+  background: var(--secondary-color);
+  color: var(--text-color);
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor:pointer;
+  font-weight: 800;
+  transition: var(--transition);
+  min-width: 40px;
+}
+
+.pager button:hover{
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.pager button.active{
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+}
+
+.pager button:disabled{
+  opacity: .5;
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+}
+
+.pager .dots{
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-weight: 900;
+}
+
+/* ===============================
+   TABLE NO-WRAP (ADMIN TABLES)
+   =============================== */
+
+/* Jangan bungkus teks di tabel */
+.table-container table th,
+.table-container table td{
+  white-space: nowrap;      /* ⛔ no wrap */
+  vertical-align: middle;
+}
+
+/* Jika konten terlalu panjang, potong dengan ellipsis */
+.table-container table td{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;         /* aman & rapi */
+}
+
+/* Link di tabel juga ikut no-wrap */
+.table-container table td a{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 260px;
+}

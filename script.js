@@ -1,5 +1,5 @@
 // Konfigurasi Google Apps Script
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyvHcSzNYZaTow79OYr4Fev0cbPwBkTTk8os4zM7s_tDLTTFtgXk9mLZtCYlZIv9y1oJQ/exec';
+const SCRIPT_URL = (window.APP_CONFIG && window.APP_CONFIG.SCRIPT_URL) || '';
 
 // ===== Session Keys =====
 const LS_SESSION = 'dash_session_v1'; // {token, username, role, group, exp}
@@ -19,6 +19,19 @@ const adminBtn = document.getElementById('admin-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userBadge = document.getElementById('user-badge');
 const userNameEl = document.getElementById('user-name');
+const pageLoader = document.getElementById('page-loader');
+
+function showPageLoader(text){
+  if (!pageLoader) return;
+  const t = pageLoader.querySelector('.pl-text');
+  if (t && text) t.textContent = text;
+  pageLoader.style.display = 'flex';
+}
+function hidePageLoader(){
+  if (!pageLoader) return;
+  pageLoader.style.display = 'none';
+}
+
 
 // Login modal elements
 const loginModal = document.getElementById('login-modal');
@@ -243,8 +256,9 @@ function showError(message) {
 
 function setupAdminButton() {
   adminBtn.addEventListener('click', () => {
-    // admin page akan handle role sendiri
-    window.location.href = 'admin.html';
+    showPageLoader('Membuka Admin...');
+    // kasih 30-80ms supaya overlay sempat render sebelum pindah halaman
+    setTimeout(()=> window.location.href = 'admin.html', 50);
   });
 }
 

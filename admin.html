@@ -114,20 +114,47 @@
                 </button>
             </div>
 
+            <!-- Toolbar: search + page size -->
+            <div class="table-toolbar">
+                <div class="tt-left">
+                <div class="tt-search">
+                    <i class="fas fa-search"></i>
+                    <input id="users-search" type="text" placeholder="Cari username / nama / group...">
+                </div>
+                </div>
+
+                <div class="tt-right">
+                <label class="tt-label" for="users-page-size">Tampil:</label>
+                <select id="users-page-size">
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+                </div>
+            </div>
+
             <div class="table-container">
                 <table id="users-table">
                 <thead>
                     <tr>
-                    <th>No</th>
+                    <th style="width:70px;">No</th>
                     <th>Username</th>
-                    <th>Role</th>
-                    <th>Group</th>
-                    <th>Active</th>
-                    <th>Aksi</th>
+                    <th>Nama</th>
+                    <th style="width:160px;">Group</th>
+                    <th style="width:110px;">Active</th>
+                    <th style="width:140px;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
                 </table>
+            </div>
+
+            <!-- Paging -->
+            <div class="pager-wrap">
+                <div class="pager-info" id="users-pager-info">Memuat...</div>
+                <div class="pager" id="users-pager"></div>
             </div>
             </div>
 
@@ -320,6 +347,7 @@
                         </div>
                         <select id="app-icon">
                             <option value="fas fa-cube">Cube</option>
+                            <option value="fas fa-utensils">Utensil</option>
                             <option value="fas fa-chart-bar">Chart Bar</option>
                             <option value="fas fa-database">Database</option>
                             <option value="fas fa-file-alt">File</option>
@@ -381,6 +409,15 @@
         </div>
     </div>
 
+    <!-- PAGE LOADER -->
+    <div id="page-loader" class="page-loader" style="display:none;">
+    <div class="pl-card">
+        <div class="pl-spin"></div>
+        <div class="pl-text">Memuat Admin...</div>
+    </div>
+    </div>
+
+    <script src="config.js"></script>
     <script src="admin.js"></script>
 </body>
 </html>
