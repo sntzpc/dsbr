@@ -1,0 +1,10 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/sntp6755/public_html/
+    - /bin/cp index.html $DEPLOYPATH
+    - /bin/cp style.css $DEPLOYPATH
+    - /bin/cp admin.html $DEPLOYPATH
+    - /bin/cp admin.js $DEPLOYPATH
+    - /bin/cp script.js $DEPLOYPATH
+    - /bin/cp config.js $DEPLOYPATH
