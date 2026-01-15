@@ -45,6 +45,10 @@ function getSession(){
   try{ return JSON.parse(localStorage.getItem(LS_SESSION) || 'null'); }catch(e){ return null; }
 }
 function setSession(s){
+  if (s && typeof s === 'object'){
+    if (s.group != null) s.group = String(s.group).trim().toLowerCase();
+    if (s.role != null) s.role = String(s.role).trim().toLowerCase();
+  }
   localStorage.setItem(LS_SESSION, JSON.stringify(s));
 }
 function clearSession(){

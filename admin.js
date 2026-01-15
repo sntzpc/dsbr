@@ -150,6 +150,10 @@ function applyUsersFilter_(){
 
 let currentGroup = 'default';
 
+function normGroupName(g){
+  return String(g || '').trim().toLowerCase();
+}
+
 // ===== UI basics =====
 function showLoginPage(){
   loginPage.style.display = 'block';
@@ -911,7 +915,8 @@ function getAllowedIdsFromUI(){
 
 function setupGroupsUI(){
   groupSelect.addEventListener('change', ()=>{
-    currentGroup = groupSelect.value;
+    currentGroup = normGroupName(groupSelect.value);
+    groupSelect.value = currentGroup;
     renderGroupDnD();
   });
 
@@ -919,7 +924,7 @@ function setupGroupsUI(){
     const ids = getAllowedIdsFromUI();
     const r = await apiPost('saveGroupApps', {
       token: me.token,
-      group: currentGroup,
+      group: normGroupName(currentGroup),
       app_ids: ids.join(',')
     });
     if (r.success){
@@ -934,10 +939,11 @@ function setupGroupsUI(){
   btnAddGroup.addEventListener('click', async ()=>{
     const name = prompt('Nama group baru? (contoh: mandor)');
     if (!name) return;
-    const r = await apiPost('addGroup', { token: me.token, group: name.trim() });
+    const gname = normGroupName(name);
+    const r = await apiPost('addGroup', { token: me.token, group: gname });
     if (r.success){
       showNotification('Group dibuat', 'success');
-      currentGroup = name.trim();
+      currentGroup = gname;
       await loadGroups();
     } else showNotification(r.message || 'Gagal buat group', 'error');
   });
