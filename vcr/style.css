@@ -1,0 +1,37 @@
+    :root{ --brand:#0ea5e9; }
+    body{ background:#0b1015; color:#e5e7eb; }
+    .navbar{ background:linear-gradient(90deg,#0b1220,#13263a); }
+    .navbar-brand{ color:#fff; font-weight:700 }
+    .navbar .nav-link{ color:#cbd5e1 }
+    .navbar .nav-link.active, .navbar .nav-link:hover{ color:#fff }
+    /* Paksa ikon hamburger jadi putih */
+.navbar {
+  /* Bootstrap 5.3: override ikon via CSS variable */
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,0.95)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+.navbar .navbar-toggler { border-color: rgba(255,255,255,.35); } /* border tombol lebih terang */
+    .card{ background:#111827; border:1px solid #1f2937; box-shadow:0 4px 24px rgba(0,0,0,.25); }
+    .form-control, .form-select{ background:#0f172a; border-color:#273244; color:#e5e7eb; }
+    .form-control:focus, .form-select:focus{ background:#0f172a; color:#fff; border-color:#38bdf8; box-shadow:0 0 0 .25rem rgba(56,189,248,.25); }
+    .btn-brand{ background:var(--brand); border:none; color:#00131a; font-weight:600 }
+    .btn-brand:hover{ filter:brightness(1.05) }
+    .muted{ color:#9ca3af }
+
+    /* Table: nowrap + horizontal scroll */
+    .table-nowrap th, .table-nowrap td{ white-space:nowrap; }
+    .table-responsive{ overflow-x:auto; }
+
+    /* Pagination (ellipsis) */
+    .page-link{ background:#0f172a; color:#e5e7eb; border-color:#273244 }
+    .page-link:hover{ color:#fff }
+
+    /* Voucher preview card */
+    .voucher-card{ width: 220px; border:2px solid #111; border-radius:8px; padding:8px; background:#fff; color:#111; }
+    .voucher-title{ font-size:12px; font-weight:700; text-align:center; }
+    .voucher-code{ font-size:18px; font-weight:800; letter-spacing:1px; text-align:center; border:2px solid #111; border-radius:6px; padding:6px 4px; margin:6px 0; }
+    .voucher-meta{ font-size:11px; text-align:center; }
+
+    /* Print (58mm paper) helper */
+    @media print{
+      body{ background:#fff; color:#000; }
+    }

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OrbitNet Hotspot — Voucher Manager</title>
+  <!-- Bootstrap 5 (latest) & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css">
+  <!-- SheetJS & jsPDF -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#/dashboard"><i class="bi bi-wifi"></i> OrbitNet Hotspot</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topnav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div id="topnav" class="collapse navbar-collapse">
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" data-link href="#/dashboard"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" data-link href="#/vouchers"><i class="bi bi-collection me-1"></i>Voucher</a></li>
+          <li class="nav-item"><a class="nav-link" data-link href="#/recap"><i class="bi bi-people me-1"></i>Rekap Reseller</a></li>
+          <li class="nav-item"><a class="nav-link" data-link href="#/settings"><i class="bi bi-gear me-1"></i>Pengaturan</a></li>
+          <li class="nav-item"><a class="nav-link" data-link href="#/print"><i class="bi bi-printer me-1"></i>Cetak</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <!-- DASHBOARD -->
+    <section id="page-dashboard" class="d-none">
+      <div class="row g-3">
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card p-3">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="muted">Total Voucher</div>
+                <div id="stat-total" class="fs-3 fw-bold text-white">0</div>
+              </div>
+              <i class="bi bi-ticket-perforated fs-2 text-info"></i>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card p-3">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="muted">Total Reseller</div>
+                <div id="stat-reseller" class="fs-3 fw-bold text-white">0</div>
+              </div>
+              <i class="bi bi-people fs-2 text-info"></i>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card p-3">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="muted">Total Margin (Estimasi)</div>
+                <div id="stat-margin" class="fs-3 fw-bold text-white">Rp0</div>
+              </div>
+              <i class="bi bi-cash-coin fs-2 text-info"></i>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card p-3">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <div class="muted">Profil Aktif</div>
+                <div id="stat-profiles" class="fs-3 fw-bold text-white">0</div>
+              </div>
+              <i class="bi bi-tags fs-2 text-info"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-3 mt-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div>
+            <h5 class="mb-1 text-white">Unggah File Voucher (.xlsx)</h5>
+            <div class="muted">Minimal: kolom <em>Name</em>, <em>Profile</em>, <em>Comment</em>.</div>
+          </div>
+          <div>
+            <label class="btn btn-brand">
+              <i class="bi bi-upload me-1"></i> Pilih File
+              <input id="file-input" type="file" accept=".xlsx" hidden>
+            </label>
+          </div>
+        </div>
+        <div id="upload-info" class="mt-3 small text-secondary"></div>
+      </div>
+
+      <div class="card p-3 mt-3">
+        <div class="d-flex align-items-center justify-content-between">
+          <h5 class="mb-0 text-white">Pratinjau cetak 58mm</h5>
+          <span class="small muted">Non-realtime</span>
+        </div>
+        <div class="d-flex gap-3 flex-wrap mt-3" id="preview-vouchers"></div>
+      </div>
+    </section>
+
+    <!-- VOUCHERS TABLE -->
+    <section id="page-vouchers" class="d-none">
+      <div class="card p-3">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+          <div class="me-auto">
+            <h5 class="mb-1 text-white">Voucher</h5>
+            <div class="small muted">Tersimpan di LocalStorage.</div>
+          </div>
+          <div>
+            <label class="form-label small mb-1 text-white">Cari</label>
+            <input id="search-voucher" class="form-control" placeholder="Ketik reseller, profil, kode..."/>
+          </div>
+          <div>
+            <label class="form-label small mb-1 text-white">Tampilkan</label>
+            <select id="size-voucher" class="form-select">
+              <option>20</option><option>50</option><option>100</option><option>500</option><option>1000</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-striped table-nowrap align-middle" id="tbl-vouchers">
+            <thead><tr>
+              <th>#</th><th>Kode Voucher</th><th>Profil</th><th>Reseller</th>
+              <th>Harga Reseller</th><th>Harga Jual</th><th>Margin</th><th>Tanggal</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <nav><ul class="pagination justify-content-end" id="pg-vouchers"></ul></nav>
+      </div>
+    </section>
+
+    <!-- RECAP -->
+    <section id="page-recap" class="d-none">
+      <div class="card p-3">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+          <div class="me-auto">
+            <h5 class="mb-1 text-white">Rekap per Reseller</h5>
+            <div class="small muted">Total per profil.</div>
+          </div>
+          <div>
+            <label class="form-label small mb-1 text-white">Cari</label>
+            <input id="search-recap" class="form-control" placeholder="Ketik reseller..."/>
+          </div>
+        </div>
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-striped table-nowrap align-middle" id="tbl-recap">
+            <thead><tr>
+              <th>Reseller</th><th>Profil</th><th>Jumlah</th><th>Total Harga Jual</th>
+              <th>Total Harga Reseller</th><th>Total Margin</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="page-settings" class="d-none">
+      <div class="card p-3">
+        <h5 class="mb-2 text-white">Profil & Harga</h5>
+        <div class="small muted">Anda dapat menambah/mengubahnya untuk tampil di label cetak.</div>
+		<!-- Voucher Title (judul di label cetak) -->
+		<div class="row g-2 mt-3">
+		  <div class="col-12 col-md-6">
+			<label class="form-label small mb-1 text-white">Voucher Title (Judul pada label cetak)</label>
+			<input id="voucher-title" class="form-control" placeholder="OrbitNet Hotspot" />
+			<div class="form-text text-secondary">Ditampilkan di preview 58mm & header PDF.</div>
+		  </div>
+		</div>
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-striped table-nowrap align-middle" id="tbl-profiles">
+            <thead><tr>
+              <th>Profil</th><th>Harga Jual</th><th>Durasi</th><th>Masa Aktif</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="text-end">
+          <button id="btn-add-profile" class="btn btn-outline-info btn-sm"><i class="bi bi-plus-lg"></i> Tambah Profil</button>
+          <button id="btn-save-profiles" class="btn btn-brand btn-sm"><i class="bi bi-check2-circle"></i> Simpan</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINT -->
+    <section id="page-print" class="d-none">
+      <div class="card p-3">
+        <h5 class="mb-2 text-white">Cetak Voucher (PDF 58mm)</h5>
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <label class="form-label text-white">Pilih Reseller</label>
+            <select id="print-reseller" class="form-select"></select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label text-white">Pilih Profil</label>
+            <select id="print-profile" class="form-select"></select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label text-white">Maks. Kupon</label>
+            <input id="print-limit" type="number" min="1" class="form-control" placeholder="Kosongkan = semua" />
+          </div>
+        </div>
+        <div class="text-end mt-3">
+          <button id="btn-generate-pdf" class="btn btn-brand"><i class="bi bi-printer"></i> Buat PDF</button>
+        </div>
+        <div class="mt-3 small muted">Contoh pratinjau:</div>
+        <div class="d-flex gap-3 flex-wrap mt-2" id="print-preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center py-4 small text-secondary">© <span id="year"></span> OrbitNet Hotspot — Voucher Manager</footer>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
