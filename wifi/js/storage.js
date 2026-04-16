@@ -1,0 +1,114 @@
+const DB_NAME = 'wifiHotspotKeuanganModularDB';
+const DB_VERSION = 3;
+const STORES = {
+  settings: 'settings',
+  categories: 'categories',
+  mainTransactions: 'mainTransactions',
+  moduleTransactions: 'moduleTransactions',
+  reserveTransactions: 'reserveTransactions',
+  syncQueue: 'syncQueue',
+  syncMeta: 'syncMeta'
+};
+
+window.DB = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    this.db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORES.settings)) db.createObjectStore(STORES.settings, { keyPath: 'key' });
+        if (!db.objectStoreNames.contains(STORES.categories)) {
+          const s = db.createObjectStore(STORES.categories, { keyPath: 'id' });
+          s.createIndex('type', 'type', { unique: false });
+          s.createIndex('parentId', 'parentId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.mainTransactions)) {
+          const s = db.createObjectStore(STORES.mainTransactions, { keyPath: 'id' });
+          s.createIndex('date', 'date', { unique: false });
+          s.createIndex('type', 'type', { unique: false });
+          s.createIndex('source', 'source', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.moduleTransactions)) {
+          const s = db.createObjectStore(STORES.moduleTransactions, { keyPath: 'id' });
+          s.createIndex('date', 'date', { unique: false });
+          s.createIndex('moduleType', 'moduleType', { unique: false });
+          s.createIndex('baseId', 'baseId', { unique: false });
+          s.createIndex('actorKey', 'actorKey', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.reserveTransactions)) {
+          const s = db.createObjectStore(STORES.reserveTransactions, { keyPath: 'id' });
+          s.createIndex('date', 'date', { unique: false });
+          s.createIndex('fundType', 'fundType', { unique: false });
+          s.createIndex('entryType', 'entryType', { unique: false });
+          s.createIndex('sourceMainTransactionId', 'sourceMainTransactionId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.syncQueue)) {
+          const s = db.createObjectStore(STORES.syncQueue, { keyPath: 'id' });
+          s.createIndex('status', 'status', { unique: false });
+          s.createIndex('storeName', 'storeName', { unique: false });
+          s.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.syncMeta)) db.createObjectStore(STORES.syncMeta, { keyPath: 'key' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return this.db;
+  },
+  async tx(store, mode='readonly') {
+    const db = await this.open();
+    return db.transaction(store, mode).objectStore(store);
+  },
+  async getAll(store) {
+    const objectStore = await this.tx(store);
+    return new Promise((resolve, reject) => {
+      const req = objectStore.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async get(store, key) {
+    const objectStore = await this.tx(store);
+    return new Promise((resolve, reject) => {
+      const req = objectStore.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async getByIndex(store, indexName, value) {
+    const objectStore = await this.tx(store);
+    return new Promise((resolve, reject) => {
+      const index = objectStore.index(indexName);
+      const req = index.get(value);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async put(store, value) {
+    const objectStore = await this.tx(store, 'readwrite');
+    return new Promise((resolve, reject) => {
+      const req = objectStore.put(value);
+      req.onsuccess = () => resolve(value);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async delete(store, key) {
+    const objectStore = await this.tx(store, 'readwrite');
+    return new Promise((resolve, reject) => {
+      const req = objectStore.delete(key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async clear(store) {
+    const objectStore = await this.tx(store, 'readwrite');
+    return new Promise((resolve, reject) => {
+      const req = objectStore.clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+};
