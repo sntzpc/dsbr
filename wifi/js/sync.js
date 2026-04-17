@@ -20,6 +20,14 @@ window.SYNC = {
   queueSelection: {},
   metaLoaded: false,
 
+    shouldSyncRecord(store, valueOrKey){
+    if(store !== 'settings') return true;
+    const key = typeof valueOrKey === 'string'
+      ? valueOrKey
+      : String(valueOrKey?.key || '');
+    return key !== 'theme';
+  },
+
   async init(){
     if(!APP.navItems.some(x=>x.key==='syncFailed')) APP.navItems.splice(1,0,{ key:'syncFailed', label:'Gagal Sync', icon:'🔁' });
     await this.ensureMeta();
@@ -158,15 +166,28 @@ window.SYNC = {
     const basePut = DB.put.bind(DB);
     const baseDelete = DB.delete.bind(DB);
     DB.put = async (store, value) => {
-      const result = await basePut(store, value);
-      if(!this.suppressQueue && SYNC_CONFIG.MANAGED_STORES.includes(store)) await this.enqueueUpsert(store, value);
-      return result;
-    };
-    DB.delete = async (store, key) => {
-      const result = await baseDelete(store, key);
-      if(!this.suppressQueue && SYNC_CONFIG.MANAGED_STORES.includes(store)) await this.enqueueDelete(store, key);
-      return result;
-    };
+  const result = await basePut(store, value);
+  if(
+    !this.suppressQueue &&
+    SYNC_CONFIG.MANAGED_STORES.includes(store) &&
+    this.shouldSyncRecord(store, value)
+  ){
+    await this.enqueueUpsert(store, value);
+  }
+  return result;
+};
+
+DB.delete = async (store, key) => {
+  const result = await baseDelete(store, key);
+  if(
+    !this.suppressQueue &&
+    SYNC_CONFIG.MANAGED_STORES.includes(store) &&
+    this.shouldSyncRecord(store, key)
+  ){
+    await this.enqueueDelete(store, key);
+  }
+  return result;
+};
   },
   async refreshStats(){
     APP.state.syncQueue = await DB.getAll(STORES.syncQueue);
@@ -213,7 +234,8 @@ window.SYNC = {
       let grandTotal = 0;
       const counts = {};
       for(const store of stores){
-        const rows = await DB.getAll(STORES[store] || store);
+        const rows = (await DB.getAll(STORES[store] || store))
+          .filter(row => this.shouldSyncRecord(store, row));
         counts[store] = rows.length;
         grandTotal += rows.length;
       }
@@ -224,7 +246,8 @@ window.SYNC = {
       let queued = 0;
       this.setProgress(0, 'Menyiapkan semua data lokal ke antrean sync...', `Total data lokal: ${grandTotal}`);
       for(const store of stores){
-        const rows = await DB.getAll(STORES[store] || store);
+        const rows = (await DB.getAll(STORES[store] || store))
+          .filter(row => this.shouldSyncRecord(store, row));
         for(const row of rows){
           const recordKey = this.extractKey(store, row);
           if(!recordKey) continue;
@@ -351,8 +374,11 @@ window.SYNC = {
       for(let i=0;i<stores.length;i++) await DB.clear(STORES[stores[i]] || stores[i]);
       this.setProgress(55, 'Menulis data hasil pull ke local storage...');
       for(const store of stores){
-        const rows = Array.isArray(data[store]) ? data[store] : [];
-        for(let i=0;i<rows.length;i++) await DB.put(STORES[store] || store, rows[i]);
+        const rows = (Array.isArray(data[store]) ? data[store] : [])
+          .filter(row => this.shouldSyncRecord(store, row));
+        for(let i=0;i<rows.length;i++) {
+          await DB.put(STORES[store] || store, rows[i]);
+        }
       }
       this.setProgress(90, 'Membersihkan antrean sync lokal...');
       await DB.clear(STORES.syncQueue);

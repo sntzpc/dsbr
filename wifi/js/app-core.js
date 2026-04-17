@@ -1,5 +1,6 @@
 const TZ = 'Asia/Jakarta';
-const SETTINGS_KEYS = { theme: 'theme', moduleConfig: 'moduleConfig' };
+const LOCAL_THEME_KEY = 'wifiHotspotTheme';
+const SETTINGS_KEYS = { moduleConfig: 'moduleConfig' };
 const BASE_MODES = {
   FULL: { label: 'Setor Penuh', note: 'Target setoran sama dengan nominal deposit/distribusi.' },
   NET: { label: 'Setor Bersih', note: 'Target setoran = nominal setelah share pelaku.' },
@@ -71,11 +72,19 @@ function showToast(message, type='success'){
   wrap.appendChild(el);
   setTimeout(()=>{ el.classList.add('opacity-0','translate-x-3'); setTimeout(()=>el.remove(),250); }, 2500);
 }
+function getLocalTheme(){
+  try {
+    return localStorage.getItem(LOCAL_THEME_KEY) === 'dark' ? 'dark' : 'light';
+  } catch(_) {
+    return 'light';
+  }
+}
 function applyTheme(theme){
   APP.state.theme = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.classList.toggle('dark', APP.state.theme === 'dark');
-  try { localStorage.setItem('wifiHotspotTheme', APP.state.theme); } catch(_) {}
-  const t = document.getElementById('themeText'); const i = document.getElementById('themeIcon');
+  try { localStorage.setItem(LOCAL_THEME_KEY, APP.state.theme); } catch(_) {}
+  const t = document.getElementById('themeText');
+  const i = document.getElementById('themeIcon');
   if(t) t.textContent = APP.state.theme === 'dark' ? 'Dark Mode' : 'Light Mode';
   if(i) i.textContent = APP.state.theme === 'dark' ? '🌙' : '🌞';
 }
@@ -113,8 +122,12 @@ function actorSharePct(base,resellerId){ return resellerId ? Number(base?.shares
 function expectedSetorAmount(base, nominal, resellerId){ const gross = Number(nominal||0); if(!base) return 0; if(base.mode === 'FULL') return gross; return Math.max(0, gross - (gross * actorSharePct(base,resellerId) / 100)); }
 
 async function seedIfNeeded(){
-  if (!await DB.get(STORES.settings, SETTINGS_KEYS.theme)) await DB.put(STORES.settings, { key: SETTINGS_KEYS.theme, value: 'light' });
-  if (!await DB.get(STORES.settings, SETTINGS_KEYS.moduleConfig)) await DB.put(STORES.settings, { key: SETTINGS_KEYS.moduleConfig, value: defaultConfig() });
+  if (!await DB.get(STORES.settings, SETTINGS_KEYS.moduleConfig)) {
+    await DB.put(STORES.settings, { key: SETTINGS_KEYS.moduleConfig, value: defaultConfig() });
+  }
+
+  // bersihkan legacy theme dari settings lokal agar tidak ikut sync lagi
+  try { await DB.delete(STORES.settings, 'theme'); } catch(_) {}
   const cats = await DB.getAll(STORES.categories);
   if (!cats.length) {
     const danaCadanganId = uuid();
@@ -133,7 +146,7 @@ async function seedIfNeeded(){
 }
 async function loadState(){
   const settings = await DB.getAll(STORES.settings);
-  APP.state.theme = settings.find(x=>x.key===SETTINGS_KEYS.theme)?.value || 'light';
+  APP.state.theme = getLocalTheme();
   APP.state.config = normalizeConfig(settings.find(x=>x.key===SETTINGS_KEYS.moduleConfig)?.value || defaultConfig());
   APP.state.categories = await DB.getAll(STORES.categories);
   APP.state.mainTransactions = (await DB.getAll(STORES.mainTransactions)).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
@@ -231,7 +244,11 @@ function dashboardPage(){
   </div>`;
 }
 function bindCoreEvents(){
-  document.getElementById('themeToggle')?.addEventListener('click', async ()=>{ const next = APP.state.theme === 'dark' ? 'light' : 'dark'; await DB.put(STORES.settings,{key:SETTINGS_KEYS.theme,value:next}); APP.state.theme = next; render(); });
+  document.getElementById('themeToggle')?.addEventListener('click', ()=>{
+  const next = APP.state.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  render();
+});
   document.getElementById('dashboardMainFilterStart')?.addEventListener('change', e=>{ APP.state.mainFilters.startDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterEnd')?.addEventListener('change', e=>{ APP.state.mainFilters.endDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterType')?.addEventListener('change', e=>{ APP.state.mainFilters.type=e.target.value; render(); });
