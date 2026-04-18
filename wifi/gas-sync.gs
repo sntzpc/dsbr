@@ -3,7 +3,9 @@ const DEFAULT_SHEETS = {
   categories: ['id','json','updatedAt'],
   mainTransactions: ['id','json','updatedAt'],
   moduleTransactions: ['id','json','updatedAt'],
-  reserveTransactions: ['id','json','updatedAt']
+  reserveTransactions: ['id','json','updatedAt'],
+  assets: ['id','json','updatedAt'],
+  debts: ['id','json','updatedAt']
 };
 
 function doGet(e){

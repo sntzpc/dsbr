@@ -22,6 +22,8 @@ const APP = {
     { key: 'main', label: 'Transaksi Utama', icon: '💵' },
     { key: 'modules', label: 'Modul Transaksi', icon: '🧩' },
     { key: 'reserve', label: 'Transaksi Cadangan', icon: '🏦' },
+    { key: 'assets', label: 'Aset', icon: '🖥️' },
+    { key: 'debts', label: 'Hutang', icon: '🧾' },
     { key: 'reports', label: 'Laporan', icon: '📑' },
     { key: 'settings', label: 'Pengaturan', icon: '⚙️' }
   ],
@@ -32,11 +34,15 @@ const APP = {
     mainTransactions: [],
     moduleTransactions: [],
     reserveTransactions: [],
+    assets: [],
+    debts: [],
     config: null,
     mainFilters: { startDate:'', endDate:'', type:'ALL', search:'' },
     moduleFilters: { modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL' },
     reportFilters: { mainStart:'', mainEnd:'', modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL', integrationPeriod:'', integrationDate:todayDateIso(), integrationTime:currentTimeWIB() },
     reserveFilters: { startDate:'', endDate:'', fundType:'ALL', entryType:'ALL', search:'' },
+    assetFilters: { startDate:'', endDate:'', search:'' },
+    debtFilters: { startDate:'', endDate:'', status:'ALL', recipientType:'ALL', period:'', search:'' },
     forms: {
       main: { type:'PENDAPATAN', categoryPath:[], amountRaw:0, notes:'', date:'', time:'' },
       module: { txType:'DEPOSIT', baseId:'', actorKey:'', recipient:'ACTOR', nominal:0, notes:'', date:'', time:'' },
@@ -74,19 +80,28 @@ function showToast(message, type='success'){
 }
 function getLocalTheme(){
   try {
-    return localStorage.getItem(LOCAL_THEME_KEY) === 'dark' ? 'dark' : 'light';
-  } catch(_) {
-    return 'light';
-  }
+    const saved = localStorage.getItem(LOCAL_THEME_KEY);
+    if(saved === 'dark' || saved === 'light') return saved;
+  } catch(_) {}
+  return 'light';
 }
+function getConfig(){ return normalizeConfig(APP.state.config || defaultConfig()); }
 function applyTheme(theme){
   APP.state.theme = theme === 'dark' ? 'dark' : 'light';
-  document.documentElement.classList.toggle('dark', APP.state.theme === 'dark');
+  const isDark = APP.state.theme === 'dark';
+  document.documentElement.classList.toggle('dark', isDark);
+  document.documentElement.setAttribute('data-theme', APP.state.theme);
+  document.body?.classList.toggle('dark', isDark);
   try { localStorage.setItem(LOCAL_THEME_KEY, APP.state.theme); } catch(_) {}
+  const btn = document.getElementById('themeToggle');
   const t = document.getElementById('themeText');
   const i = document.getElementById('themeIcon');
-  if(t) t.textContent = APP.state.theme === 'dark' ? 'Dark Mode' : 'Light Mode';
-  if(i) i.textContent = APP.state.theme === 'dark' ? '🌙' : '🌞';
+  if(btn){
+    btn.setAttribute('aria-pressed', String(isDark));
+    btn.setAttribute('title', isDark ? 'Ubah ke Light Mode' : 'Ubah ke Dark Mode');
+  }
+  if(t) t.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+  if(i) i.textContent = isDark ? '🌙' : '🌞';
 }
 function defaultConfig(){
   return {
@@ -121,6 +136,10 @@ function actorLabel(base,resellerId){ return resellerId ? (findReseller(base,res
 function actorSharePct(base,resellerId){ return resellerId ? Number(base?.shares?.reseller||0) : Number(base?.shares?.baseDirect||0); }
 function expectedSetorAmount(base, nominal, resellerId){ const gross = Number(nominal||0); if(!base) return 0; if(base.mode === 'FULL') return gross; return Math.max(0, gross - (gross * actorSharePct(base,resellerId) / 100)); }
 
+function hasExpenseAssetCategory(categories){
+  return (categories || []).some(x => x.type==='PENGELUARAN' && String(x.name||'').trim().toLowerCase()==='aset');
+}
+
 async function seedIfNeeded(){
   if (!await DB.get(STORES.settings, SETTINGS_KEYS.moduleConfig)) {
     await DB.put(STORES.settings, { key: SETTINGS_KEYS.moduleConfig, value: defaultConfig() });
@@ -129,11 +148,15 @@ async function seedIfNeeded(){
   // bersihkan legacy theme dari settings lokal agar tidak ikut sync lagi
   try { await DB.delete(STORES.settings, 'theme'); } catch(_) {}
   const cats = await DB.getAll(STORES.categories);
+  if(cats.length && !hasExpenseAssetCategory(cats)){
+    await DB.put(STORES.categories, { id:uuid(), type:'PENGELUARAN', name:'Aset', parentId:'ROOT' });
+  }
   if (!cats.length) {
     const danaCadanganId = uuid();
     const seed = [
       { id:uuid(), type:'PENDAPATAN', name:'Penjualan', parentId:'ROOT' }, { id:uuid(), type:'PENDAPATAN', name:'Pendapatan Lain', parentId:'ROOT' },
       { id:uuid(), type:'PENGELUARAN', name:'Operasional', parentId:'ROOT' }, { id:uuid(), type:'PENGELUARAN', name:'Pembelian', parentId:'ROOT' },
+      { id:uuid(), type:'PENGELUARAN', name:'Aset', parentId:'ROOT' },
       { id:uuid(), type:'PENDAPATAN', name:'Rekap Base/Reseller', parentId:'ROOT' },
       { id:uuid(), type:'PENGELUARAN', name:'Bagi Hasil', parentId:'ROOT' },
       { id:danaCadanganId, type:'PENGELUARAN', name:'Dana Cadangan', parentId:'ROOT' },
@@ -152,6 +175,8 @@ async function loadState(){
   APP.state.mainTransactions = (await DB.getAll(STORES.mainTransactions)).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
   APP.state.moduleTransactions = (await DB.getAll(STORES.moduleTransactions)).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
   APP.state.reserveTransactions = (await DB.getAll(STORES.reserveTransactions)).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+  APP.state.assets = (await DB.getAll(STORES.assets)).sort((a,b)=>`${b.assetDate || ''} ${b.createdAt || ''}`.localeCompare(`${a.assetDate || ''} ${a.createdAt || ''}`));
+  APP.state.debts = (await DB.getAll(STORES.debts)).sort((a,b)=>`${b.debtDate || ''} ${b.debtTime || ''}`.localeCompare(`${a.debtDate || ''} ${a.debtTime || ''}`));
   if(!APP.state.forms.main.date) resetMainForm();
   if(!APP.state.forms.module.date) resetModuleForm();
   if(!APP.state.forms.reserve.date && typeof resetReserveForm === 'function') resetReserveForm();
@@ -180,7 +205,7 @@ function dashboardPage(){
   }, {});
   const piutangRows = Object.values(piutangPerBase).filter(x=>x.receivable>0).sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
   const totalPiutang = piutangRows.reduce((s,x)=>s+Number(x.receivable||0),0);
-  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) - totalPiutang;
+  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) + totalPiutang;
   const autoBagiHasil = Number(moduleAuto.grand.actorShare||0) + Number(moduleAuto.grand.baseShare||0) + Number(moduleAuto.grand.ownerShare||0) + Number(moduleAuto.grand.partnerShare||0);
   const filteredCount = main.length;
   return `
@@ -188,7 +213,7 @@ function dashboardPage(){
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div><h2 class="text-xl font-bold">Dashboard</h2><p class="text-sm text-slate-500 dark:text-slate-400">Ringkasan transaksi utama, dana cadangan, dan piutang base.</p></div>
-        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800/80"><div><span class="font-semibold">Technical:</span> ${escapeHtml(APP.state.config.partnerName)}</div><div><span class="font-semibold">System:</span> ${escapeHtml(APP.state.config.ownerName)}</div></div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800/80"><div><span class="font-semibold">Technical:</span> ${escapeHtml(getConfig().partnerName)}</div><div><span class="font-semibold">System:</span> ${escapeHtml(getConfig().ownerName)}</div></div>
       </div>
     </section>
 
@@ -207,7 +232,7 @@ function dashboardPage(){
     </section>
 
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
-      <div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-lg font-bold">Informasi Saldo</h3><p class="text-sm text-slate-500 dark:text-slate-400">Saldo Aktual = Saldo Utama + Zakat + Infaq + Penyusutan - Piutang.</p></div></div>
+      <div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-lg font-bold">Informasi Saldo</h3><p class="text-sm text-slate-500 dark:text-slate-400">Saldo Akhir = Saldo Utama + Zakat + Infaq + Penyusutan + Piutang.</p></div></div>
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           ${card('Saldo Utama', `Rp ${rupiah(saldoUtama)}`, `Pendapatan Rp ${rupiah(pendapatan)} · Pengeluaran Rp ${rupiah(pengeluaran)}`, saldoUtama>=0?'text-blue-600':'text-amber-600')}
@@ -215,7 +240,7 @@ function dashboardPage(){
           ${card('Infaq', `Rp ${rupiah(reserve.funds?.INFAQ?.balance || 0)}`, `Masuk Rp ${rupiah(reserve.funds?.INFAQ?.credit || 0)} · Keluar Rp ${rupiah(reserve.funds?.INFAQ?.debit || 0)}`, 'text-violet-600')}
           ${card('Penyusutan', `Rp ${rupiah(reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Masuk Rp ${rupiah(reserve.funds?.PENYUSUTAN?.credit || 0)} · Keluar Rp ${rupiah(reserve.funds?.PENYUSUTAN?.debit || 0)}`, 'text-violet-600')}
           ${card('Total Piutang Base', `Rp ${rupiah(totalPiutang)}`, `${piutangRows.length} base masih punya piutang`, totalPiutang>0?'text-amber-600':'text-emerald-600')}
-          ${card('Saldo Aktual', `Rp ${rupiah(saldoAktual)}`, 'Saldo setelah dikurangi piutang', saldoAktual>=0?'text-emerald-600':'text-rose-600')}
+          ${card('Saldo Akhir', `Rp ${rupiah(saldoAktual)}`, 'Saldo setelah ditambah piutang', saldoAktual>=0?'text-emerald-600':'text-rose-600')}
         </div>
         <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50">
           <h4 class="text-base font-bold">Rincian Piutang per Base</h4>
@@ -287,7 +312,9 @@ function render(){
   if(APP.state.currentPage==='modules') root.innerHTML = modulesPage();
   if(APP.state.currentPage==='reserve') root.innerHTML = reserveFundsPage();
   if(APP.state.currentPage==='reports') root.innerHTML = reportsPage();
+  if(APP.state.currentPage==='assets') root.innerHTML = assetsPage();
+  if(APP.state.currentPage==='debts') root.innerHTML = debtsPage();
   if(APP.state.currentPage==='settings') root.innerHTML = settingsPage();
-  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindSettingsEvents(); updateClock();
+  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); updateClock();
 }
 window.addEventListener('DOMContentLoaded', async ()=>{ await DB.open(); await seedIfNeeded(); await loadState(); render(); updateClock(); setInterval(updateClock, 1000); });

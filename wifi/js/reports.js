@@ -1,5 +1,6 @@
 function actorFilterOptions(baseId, selected='ALL'){
-  const bases = baseId === 'ALL' ? APP.state.config.bases : APP.state.config.bases.filter(b=>b.id===baseId);
+  const cfg = getConfig();
+  const bases = baseId === 'ALL' ? cfg.bases : cfg.bases.filter(b=>b.id===baseId);
   const opts = [];
   for(const base of bases){
     if(base.directEnabled) opts.push({ value: actorKey(base.id,''), label:`${base.name} (Direct)` });
@@ -87,7 +88,7 @@ function getBalanceInfoReportData(){
   });
   const piutangPerBase = [...piutangByBaseMap.values()].sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
   const totalPiutang = piutangPerBase.reduce((s,x)=>s+Number(x.receivable||0),0);
-  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) - totalPiutang;
+  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) + totalPiutang;
   return { start, end, pendapatan, pengeluaran, saldoUtama, reserve, piutangPerBase, piutangDetail, totalPiutang, saldoAktual };
 }
 function balanceInfoSection(){
@@ -112,7 +113,7 @@ function balanceInfoSection(){
         ${card('Infaq', `Rp ${rupiah(info.reserve.funds?.INFAQ?.balance || 0)}`, `Masuk Rp ${rupiah(info.reserve.funds?.INFAQ?.credit || 0)} · Keluar Rp ${rupiah(info.reserve.funds?.INFAQ?.debit || 0)}`, 'text-violet-600')}
         ${card('Penyusutan', `Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Masuk Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.credit || 0)} · Keluar Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.debit || 0)}`, 'text-violet-600')}
         ${card('Total Piutang Base', `Rp ${rupiah(info.totalPiutang)}`, `${info.piutangPerBase.length} base masih punya piutang`, info.totalPiutang>0?'text-amber-600':'text-emerald-600')}
-        ${card('Saldo Aktual', `Rp ${rupiah(info.saldoAktual)}`, 'Saldo Utama + Dana Cadangan - Piutang', info.saldoAktual>=0?'text-emerald-600':'text-rose-600')}
+        ${card('Saldo Akhir', `Rp ${rupiah(info.saldoAktual)}`, 'Saldo Utama + Dana Cadangan + Piutang', info.saldoAktual>=0?'text-emerald-600':'text-rose-600')}
       </div>
       <div class="mt-4 table-wrap"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-right">Piutang</th><th class="px-3 py-2 text-center">Akun Piutang</th></tr></thead><tbody>${info.piutangPerBase.map(row=>`<tr class="border-b"><td class="px-3 py-2">${escapeHtml(row.baseName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.receivable)}</td><td class="px-3 py-2 text-center">${row.actors}</td></tr>`).join('') || '<tr><td colspan="3" class="px-3 py-8 text-center text-slate-500">Tidak ada piutang pada periode ini.</td></tr>'}</tbody></table></div>
     </section>`;
@@ -130,7 +131,7 @@ function exportBalanceInfoXlsx(){
     { Komponen:'Infaq', Nilai:Number(info.reserve.funds?.INFAQ?.balance || 0), Keterangan:'Saldo dana Infaq' },
     { Komponen:'Penyusutan', Nilai:Number(info.reserve.funds?.PENYUSUTAN?.balance || 0), Keterangan:'Saldo dana Penyusutan' },
     { Komponen:'Total Piutang Base', Nilai:Number(info.totalPiutang||0), Keterangan:'Akumulasi piutang per base' },
-    { Komponen:'Saldo Aktual', Nilai:Number(info.saldoAktual||0), Keterangan:'Saldo Utama + Dana Cadangan - Piutang' }
+    { Komponen:'Saldo Akhir', Nilai:Number(info.saldoAktual||0), Keterangan:'Saldo Utama + Dana Cadangan + Piutang' }
   ];
   const reserveRows = ['ZAKAT','INFAQ','PENYUSUTAN'].map(key=>({
     PosDana: reserveFundInfo(key).label,
@@ -164,7 +165,7 @@ function exportBalanceInfoPdf(){
       ['Infaq', `Rp ${rupiah(info.reserve.funds?.INFAQ?.balance || 0)}`, 'Saldo dana Infaq'],
       ['Penyusutan', `Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'Saldo dana Penyusutan'],
       ['Total Piutang Base', `Rp ${rupiah(info.totalPiutang)}`, 'Akumulasi piutang per base'],
-      ['Saldo Aktual', `Rp ${rupiah(info.saldoAktual)}`, 'Saldo Utama + Dana Cadangan - Piutang']
+      ['Saldo Akhir', `Rp ${rupiah(info.saldoAktual)}`, 'Saldo Utama + Dana Cadangan + Piutang']
     ], styles:{fontSize:9}
   });
   y = doc.lastAutoTable.finalY + 16;
@@ -203,10 +204,9 @@ function rowsForPeriod(period, type){
       .flatMap(tx=>{
         const actor = txDecorated(tx);
         return [
-          { nominal:Number(tx.baseShareAmount||0), recipientLabel:actor.baseName, baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::BASE`, recipientKey:`BASE::${actor.baseName}`, sourceDepositId:tx.id },
-          { nominal:Number(tx.actorShareAmount||0), recipientLabel:'Pelaku', baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::ACTOR`, recipientKey:`ACTOR::${actor.actorName}`, sourceDepositId:tx.id },
-          { nominal:Number(tx.ownerShareAmount||0), recipientLabel:APP.state.config.ownerName || 'System', baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::OWNER`, recipientKey:`OWNER::${APP.state.config.ownerName || 'System'}`, sourceDepositId:tx.id },
-          { nominal:Number(tx.partnerShareAmount||0), recipientLabel:APP.state.config.partnerName || 'Technical', baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::PARTNER`, recipientKey:`PARTNER::${APP.state.config.partnerName || 'Technical'}`, sourceDepositId:tx.id }
+          { nominal:Number(tx.baseShareAmount||0), recipientType:'BASE', recipientLabel:actor.baseName, baseId:actor.baseId, actorKey:actor.actorKey, baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::BASE`, recipientKey:`BASE::${actor.baseName}`, sourceDepositId:tx.id, notes:`Bagi hasil base dari deposit ${actor.actorName}.` },
+          { nominal:Number(tx.ownerShareAmount||0), recipientType:'OWNER', recipientLabel:getConfig().ownerName || 'System', baseId:actor.baseId, actorKey:actor.actorKey, baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::OWNER`, recipientKey:`OWNER::${getConfig().ownerName || 'System'}`, sourceDepositId:tx.id, notes:`Bagi hasil owner dari deposit ${actor.actorName}.` },
+          { nominal:Number(tx.partnerShareAmount||0), recipientType:'PARTNER', recipientLabel:getConfig().partnerName || 'Technical', baseId:actor.baseId, actorKey:actor.actorKey, baseName:actor.baseName, actorName:actor.actorName, rowKey:`${tx.id}::PARTNER`, recipientKey:`PARTNER::${getConfig().partnerName || 'Technical'}`, sourceDepositId:tx.id, notes:`Bagi hasil partner dari deposit ${actor.actorName}.` }
         ].filter(r=>r.nominal>0);
       });
   }
@@ -252,47 +252,12 @@ async function postPeriodicIntegration(kind){
   const [rootId, childId] = await ensureMainCategory(cfg.type, cfg.root, cfg.child);
 
   if(kind === 'BAGIHASIL'){
-    const forcedDate = endOfPeriodDate(period);
-    const forcedTime = '23:59:59';
     const existingProfitPosts = APP.state.mainTransactions.filter(x => String(x.source||'').startsWith('INTEGRATION_BAGIHASIL') && x.integrationPeriod===period);
     for(const row of existingProfitPosts) await DB.delete(STORES.mainTransactions, row.id);
-
-    const depositsInPeriod = APP.state.moduleTransactions.filter(x => x.moduleType==='DEPOSIT' && periodKey(x.date)===period);
-    const totals = depositsInPeriod.reduce((acc, tx)=>{
-      acc.base += Number(tx.baseShareAmount || 0);
-      acc.partner += Number(tx.partnerShareAmount || 0);
-      acc.owner += Number(tx.ownerShareAmount || 0);
-      return acc;
-    }, { base:0, partner:0, owner:0 });
-
-    const profitTargets = [
-      { childName:'Terima Base', amount: totals.base, source:'INTEGRATION_BAGIHASIL_BASE' },
-      { childName:`Terima ${APP.state.config.partnerName || 'Partner'}`, amount: totals.partner, source:'INTEGRATION_BAGIHASIL_PARTNER' },
-      { childName:`Terima ${APP.state.config.ownerName || 'Own'}`, amount: totals.owner, source:'INTEGRATION_BAGIHASIL_OWNER' }
-    ].filter(item => Number(item.amount || 0) > 0);
-
-    if(!profitTargets.length) return showToast('Tidak ada data bagi hasil pada periode tersebut.', 'error');
-
-    for(const item of profitTargets){
-      const catPath = await ensureMainCategory(cfg.type, cfg.root, item.childName);
-      const payload = {
-        id: uuid(),
-        type: cfg.type,
-        categoryPath: catPath,
-        categoryPathNames: categoryPathNames(catPath),
-        amount: Number(item.amount || 0),
-        notes: `Posting total bagi hasil periode ${period} · ${item.childName}.`,
-        date: forcedDate,
-        time: forcedTime,
-        source: item.source,
-        integrationPeriod: period,
-        updatedAt: nowParts().display
-      };
-      await DB.put(STORES.mainTransactions, payload);
-    }
+    const res = await postProfitPeriodToDebts(period);
     await loadState();
     render();
-    return showToast('Posting bagi hasil berhasil dipindahkan ke Transaksi Utama menjadi 3 total periode.');
+    return showToast(`Posting bagi hasil ke Hutang selesai. Ditambahkan ${res.created} data per periode & penerima${res.skipped ? `, dilewati ${res.skipped} data duplikat` : ''}.`);
   }
 
   if(kind === 'SETOR'){
@@ -449,7 +414,7 @@ function reportsPage(){
           <input id="integrationTime" type="time" step="1" value="${APP.state.reportFilters.integrationTime || currentTimeWIB()}" class="rounded-2xl border px-3 py-2">
           <button data-post-kind="SETOR" class="post-btn rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Setoran</button>
           <button data-post-kind="PIUTANG" class="post-btn rounded-2xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white">Piutang</button>
-          <button data-post-kind="BAGIHASIL" class="post-btn rounded-2xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white xl:col-span-2">Bagi Hasil</button>
+          <button data-post-kind="BAGIHASIL" class="post-btn rounded-2xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white xl:col-span-2">Bagi Hasil ke Hutang</button>
         </div>
       </div>
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -473,7 +438,7 @@ function reportsPage(){
       </div>
       <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
         <h3 class="text-lg font-bold">Bagi Hasil Otomatis</h3>
-        <div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left whitespace-nowrap">Tanggal</th><th class="px-3 py-2 text-left whitespace-nowrap">Base</th><th class="px-3 py-2 text-left whitespace-nowrap">Pelaku</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima Base</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima ${escapeHtml(APP.state.config.partnerName || 'Technical')}</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima ${escapeHtml(APP.state.config.ownerName || 'System')}</th><th class="px-3 py-2 text-left whitespace-nowrap">Catatan</th></tr></thead><tbody>${profitSummary.rows.map(row=>`<tr class="border-b"><td class="px-3 py-2 whitespace-nowrap">${formatDateTime(row.date,row.time)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.baseName)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.actorName)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.baseReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.partnerReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.ownerReceive)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.note||'-')}</td></tr>`).join('') || `<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">Belum ada data bagi hasil.</td></tr>`}<tr class="border-t-2 font-bold"><td class="px-3 py-2 whitespace-nowrap" colspan="3">Total</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.baseReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.partnerReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.ownerReceive)}</td><td class="px-3 py-2 whitespace-nowrap">Mengikuti filter laporan modul</td></tr></tbody></table></div>
+        <div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left whitespace-nowrap">Tanggal</th><th class="px-3 py-2 text-left whitespace-nowrap">Base</th><th class="px-3 py-2 text-left whitespace-nowrap">Pelaku</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima Base</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima ${escapeHtml(getConfig().partnerName || 'Technical')}</th><th class="px-3 py-2 text-right whitespace-nowrap">Terima ${escapeHtml(getConfig().ownerName || 'System')}</th><th class="px-3 py-2 text-left whitespace-nowrap">Catatan</th></tr></thead><tbody>${profitSummary.rows.map(row=>`<tr class="border-b"><td class="px-3 py-2 whitespace-nowrap">${formatDateTime(row.date,row.time)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.baseName)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.actorName)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.baseReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.partnerReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(row.ownerReceive)}</td><td class="px-3 py-2 whitespace-nowrap">${escapeHtml(row.note||'-')}</td></tr>`).join('') || `<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">Belum ada data bagi hasil.</td></tr>`}<tr class="border-t-2 font-bold"><td class="px-3 py-2 whitespace-nowrap" colspan="3">Total</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.baseReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.partnerReceive)}</td><td class="px-3 py-2 text-right whitespace-nowrap">Rp ${rupiah(profitSummary.totals.ownerReceive)}</td><td class="px-3 py-2 whitespace-nowrap">Mengikuti filter laporan modul</td></tr></tbody></table></div>
       </div>
     </section>
 
@@ -484,7 +449,7 @@ function reportsPage(){
   </div>`;
 }
 async function exportBackup(){
-  const data = { version:2, exportedAt:new Date().toISOString(), settings:await DB.getAll(STORES.settings), categories:await DB.getAll(STORES.categories), mainTransactions:await DB.getAll(STORES.mainTransactions), moduleTransactions:await DB.getAll(STORES.moduleTransactions), reserveTransactions:await DB.getAll(STORES.reserveTransactions) };
+  const data = { version:4, exportedAt:new Date().toISOString(), settings:await DB.getAll(STORES.settings), categories:await DB.getAll(STORES.categories), mainTransactions:await DB.getAll(STORES.mainTransactions), moduleTransactions:await DB.getAll(STORES.moduleTransactions), reserveTransactions:await DB.getAll(STORES.reserveTransactions), assets:await DB.getAll(STORES.assets), debts:await DB.getAll(STORES.debts) };
   const blob = new Blob([JSON.stringify(data,null,2)], { type:'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup-keuangan-wifi-${todayDateIso()}.json`; a.click(); URL.revokeObjectURL(a.href);
 }
@@ -496,11 +461,15 @@ async function importBackup(file){
   for(const row of await DB.getAll(STORES.mainTransactions)) await DB.delete(STORES.mainTransactions, row.id);
   for(const row of await DB.getAll(STORES.moduleTransactions)) await DB.delete(STORES.moduleTransactions, row.id);
   for(const row of await DB.getAll(STORES.reserveTransactions)) await DB.delete(STORES.reserveTransactions, row.id);
+  for(const row of await DB.getAll(STORES.assets)) await DB.delete(STORES.assets, row.id);
+  for(const row of await DB.getAll(STORES.debts)) await DB.delete(STORES.debts, row.id);
   for(const row of data.settings) await DB.put(STORES.settings, row);
   for(const row of data.categories) await DB.put(STORES.categories, row);
   for(const row of (data.mainTransactions||[])) await DB.put(STORES.mainTransactions, row);
   for(const row of (data.moduleTransactions||[])) await DB.put(STORES.moduleTransactions, row);
   for(const row of (data.reserveTransactions||[])) await DB.put(STORES.reserveTransactions, row);
+  for(const row of (data.assets||[])) await DB.put(STORES.assets, row);
+  for(const row of (data.debts||[])) await DB.put(STORES.debts, row);
   await loadState(); render(); showToast('Backup berhasil diimpor.');
 }
 function exportReportsXlsx(){
@@ -511,13 +480,15 @@ function exportReportsXlsx(){
   const autoRows = aggregateModuleReport().rows.map(x=>({ Base:x.baseName, Pelaku:x.actorName, Deposit:Number(x.gross||0), TargetSetor:Number(x.expected||0), Setoran:Number(x.actual||0), PiutangAuto:Number(x.receivable||0), ShareActor:Number(x.actorShareDisplay||x.actorShare||0), ShareOwner:Number(x.ownerShare||0), SharePartner:Number(x.partnerShare||0) }));
   const piutangRows = reportModuleRows('PIUTANG').map(x=>({ Tanggal:formatDateTime(x.date,x.time), Base:x.baseName, Pelaku:x.actorName, Nominal:Number(x.nominal||0), Catatan:x.notes||'' }));
   const piutangTotal = piutangRows.reduce((s,x)=>s+Number(x.Nominal||0),0);
-  const bagiRows = reportProfitSummaryRows().rows.map(x=>({ Tanggal:formatDateTime(x.date,x.time), Base:x.baseName, Pelaku:x.actorName, TerimaBase:Number(x.baseReceive||0), [`Terima${APP.state.config.partnerName || 'Technical'}`]:Number(x.partnerReceive||0), [`Terima${APP.state.config.ownerName || 'System'}`]:Number(x.ownerReceive||0), Catatan:x.note||'' }));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{Komponen:'Pendapatan', Nilai:Number(balanceInfo.pendapatan||0), Keterangan:'Transaksi utama pendapatan pada periode saldo'},{Komponen:'Pengeluaran', Nilai:Number(balanceInfo.pengeluaran||0), Keterangan:'Transaksi utama pengeluaran pada periode saldo'},{Komponen:'Saldo Utama', Nilai:Number(balanceInfo.saldoUtama||0), Keterangan:'Pendapatan - Pengeluaran'},{Komponen:'Zakat', Nilai:Number(balanceInfo.reserve.funds?.ZAKAT?.balance || 0), Keterangan:'Saldo dana Zakat'},{Komponen:'Infaq', Nilai:Number(balanceInfo.reserve.funds?.INFAQ?.balance || 0), Keterangan:'Saldo dana Infaq'},{Komponen:'Penyusutan', Nilai:Number(balanceInfo.reserve.funds?.PENYUSUTAN?.balance || 0), Keterangan:'Saldo dana Penyusutan'},{Komponen:'Total Piutang Base', Nilai:Number(balanceInfo.totalPiutang||0), Keterangan:'Piutang per base'},{Komponen:'Saldo Aktual', Nilai:Number(balanceInfo.saldoAktual||0), Keterangan:'Saldo Utama + Dana Cadangan - Piutang'}]), 'Informasi Saldo');
+  const bagiRows = reportProfitSummaryRows().rows.map(x=>({ Tanggal:formatDateTime(x.date,x.time), Base:x.baseName, Pelaku:x.actorName, TerimaBase:Number(x.baseReceive||0), [`Terima${getConfig().partnerName || 'Technical'}`]:Number(x.partnerReceive||0), [`Terima${getConfig().ownerName || 'System'}`]:Number(x.ownerReceive||0), Catatan:x.note||'' }));
+  const debtRowsX = (window.debtRows ? debtRows() : []).map(x=>({ TanggalHutang:formatDateTime(x.debtDate,x.debtTime), PeriodeHutang:(window.periodLabel ? periodLabel(x.period) : x.period), Penerima:x.recipientName, HutangAwal:Number(x.principalAmount||0), Terbayar:Number(x.paidAmount||0), Sisa:Number(x.remainingAmount||0), Status:x.status, PembebananTerakhir:x.lastBurdenPeriod ? (window.periodLabel ? periodLabel(x.lastBurdenPeriod) : x.lastBurdenPeriod) : '', TanggalPostingTerakhir:x.lastPostingDate ? formatDateTime(x.lastPostingDate, x.lastPostingTime || '23:59:59') : '', UpdateTerakhir:x.updatedAt || '', Catatan:x.notes || '' }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{Komponen:'Pendapatan', Nilai:Number(balanceInfo.pendapatan||0), Keterangan:'Transaksi utama pendapatan pada periode saldo'},{Komponen:'Pengeluaran', Nilai:Number(balanceInfo.pengeluaran||0), Keterangan:'Transaksi utama pengeluaran pada periode saldo'},{Komponen:'Saldo Utama', Nilai:Number(balanceInfo.saldoUtama||0), Keterangan:'Pendapatan - Pengeluaran'},{Komponen:'Zakat', Nilai:Number(balanceInfo.reserve.funds?.ZAKAT?.balance || 0), Keterangan:'Saldo dana Zakat'},{Komponen:'Infaq', Nilai:Number(balanceInfo.reserve.funds?.INFAQ?.balance || 0), Keterangan:'Saldo dana Infaq'},{Komponen:'Penyusutan', Nilai:Number(balanceInfo.reserve.funds?.PENYUSUTAN?.balance || 0), Keterangan:'Saldo dana Penyusutan'},{Komponen:'Total Piutang Base', Nilai:Number(balanceInfo.totalPiutang||0), Keterangan:'Piutang per base'},{Komponen:'Saldo Akhir', Nilai:Number(balanceInfo.saldoAktual||0), Keterangan:'Saldo Utama + Dana Cadangan + Piutang'}]), 'Informasi Saldo');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(balanceInfo.piutangPerBase.length?balanceInfo.piutangPerBase.map(r=>({Base:r.baseName, Piutang:Number(r.receivable||0), JumlahAkun:r.actors})):[{Info:'Tidak ada piutang'}]), 'Saldo Piutang');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mainRows.length?mainRows:[{Info:'Tidak ada data'}]), 'Transaksi Utama');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(autoRows.length?autoRows:[{Info:'Tidak ada data'}]), 'Rekap Auto');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(piutangRows.length?[...piutangRows,{Tanggal:'', Base:'', Pelaku:'Total', Nominal:piutangTotal, Catatan:'Mengikuti filter laporan modul'}]:[{Info:'Tidak ada data'}]), 'Piutang Auto');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bagiRows.length?bagiRows:[{Info:'Tidak ada data'}]), 'Bagi Hasil Auto');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(debtRowsX.length?debtRowsX:[{Info:'Tidak ada data'}]), 'Hutang Bagi Hasil');
   XLSX.writeFile(wb, `laporan-keuangan-wifi-${todayDateIso()}.xlsx`);
 }
 function exportReportsPdf(){
@@ -534,7 +505,7 @@ function exportReportsPdf(){
   doc.autoTable({
     startY: y,
     head: [['Komponen Saldo','Nilai','Keterangan']],
-    body: [['Saldo Utama', `Rp ${rupiah(balanceInfo.saldoUtama)}`, 'Pendapatan - Pengeluaran'],['Zakat', `Rp ${rupiah(balanceInfo.reserve.funds?.ZAKAT?.balance || 0)}`, 'Saldo dana Zakat'],['Infaq', `Rp ${rupiah(balanceInfo.reserve.funds?.INFAQ?.balance || 0)}`, 'Saldo dana Infaq'],['Penyusutan', `Rp ${rupiah(balanceInfo.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'Saldo dana Penyusutan'],['Total Piutang Base', `Rp ${rupiah(balanceInfo.totalPiutang)}`, 'Akumulasi piutang per base'],['Saldo Aktual', `Rp ${rupiah(balanceInfo.saldoAktual)}`, 'Saldo Utama + Dana Cadangan - Piutang']],
+    body: [['Saldo Utama', `Rp ${rupiah(balanceInfo.saldoUtama)}`, 'Pendapatan - Pengeluaran'],['Zakat', `Rp ${rupiah(balanceInfo.reserve.funds?.ZAKAT?.balance || 0)}`, 'Saldo dana Zakat'],['Infaq', `Rp ${rupiah(balanceInfo.reserve.funds?.INFAQ?.balance || 0)}`, 'Saldo dana Infaq'],['Penyusutan', `Rp ${rupiah(balanceInfo.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'Saldo dana Penyusutan'],['Total Piutang Base', `Rp ${rupiah(balanceInfo.totalPiutang)}`, 'Akumulasi piutang per base'],['Saldo Akhir', `Rp ${rupiah(balanceInfo.saldoAktual)}`, 'Saldo Utama + Dana Cadangan + Piutang']],
     styles:{fontSize:8}
   });
   y = doc.lastAutoTable.finalY + 16;
@@ -554,8 +525,15 @@ function exportReportsPdf(){
   y = doc.lastAutoTable.finalY + 16;
   doc.autoTable({
     startY: y,
-    head: [['Bagi Hasil Auto','Base','Pelaku','Terima Base',`Terima ${APP.state.config.partnerName || 'Technical'}`,`Terima ${APP.state.config.ownerName || 'System'}`]],
+    head: [['Bagi Hasil Auto','Base','Pelaku','Terima Base',`Terima ${getConfig().partnerName || 'Technical'}`,`Terima ${getConfig().ownerName || 'System'}`]],
     body: reportProfitSummaryRows().rows.map(r=>[formatDateTime(r.date,r.time),r.baseName,r.actorName,`Rp ${rupiah(r.baseReceive)}`,`Rp ${rupiah(r.partnerReceive)}`,`Rp ${rupiah(r.ownerReceive)}`]),
+    styles:{fontSize:8}
+  });
+  y = doc.lastAutoTable.finalY + 16;
+  doc.autoTable({
+    startY: y,
+    head: [['Tanggal Hutang','Periode Hutang','Penerima','Sisa Hutang','Status','Pembebanan Terakhir']],
+    body: (window.debtRows ? debtRows() : []).map(r=>[formatDateTime(r.debtDate,r.debtTime), (window.periodLabel ? periodLabel(r.period) : r.period), r.recipientName, `Rp ${rupiah(r.remainingAmount)}`, r.status, r.lastBurdenPeriod ? `${(window.periodLabel ? periodLabel(r.lastBurdenPeriod) : r.lastBurdenPeriod)} · ${formatDate(r.lastPostingDate || '')}` : '-']),
     styles:{fontSize:8}
   });
   doc.save(`laporan-keuangan-wifi-${todayDateIso()}.pdf`);

@@ -27,7 +27,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span id="clockBadge" class="hidden sm:inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"></span>
-            <button id="themeToggle" class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium shadow-sm">
+            <button id="themeToggle" type="button" aria-pressed="false" class="inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium shadow-sm transition">
               <span id="themeIcon">🌞</span>
               <span id="themeText">Light</span>
             </button>
@@ -58,6 +58,8 @@
   <script src="js/main-transactions.js"></script>
   <script src="js/base-reseller.js"></script>
   <script src="js/reserve-funds.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/debts.js"></script>
   <script src="js/reports.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/sync.js"></script>

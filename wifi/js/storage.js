@@ -1,11 +1,13 @@
 const DB_NAME = 'wifiHotspotKeuanganModularDB';
-const DB_VERSION = 3;
+const DB_VERSION = 6;
 const STORES = {
   settings: 'settings',
   categories: 'categories',
   mainTransactions: 'mainTransactions',
   moduleTransactions: 'moduleTransactions',
   reserveTransactions: 'reserveTransactions',
+  assets: 'assets',
+  debts: 'debts',
   syncQueue: 'syncQueue',
   syncMeta: 'syncMeta'
 };
@@ -43,6 +45,26 @@ window.DB = {
           s.createIndex('fundType', 'fundType', { unique: false });
           s.createIndex('entryType', 'entryType', { unique: false });
           s.createIndex('sourceMainTransactionId', 'sourceMainTransactionId', { unique: false });
+        }
+        let assetStore;
+        if (!db.objectStoreNames.contains(STORES.assets)) {
+          assetStore = db.createObjectStore(STORES.assets, { keyPath: 'id' });
+        } else {
+          assetStore = e.target.transaction.objectStore(STORES.assets);
+        }
+        if (!assetStore.indexNames.contains('assetDate')) assetStore.createIndex('assetDate', 'assetDate', { unique: false });
+        if (!assetStore.indexNames.contains('assetNameKey')) assetStore.createIndex('assetNameKey', 'assetNameKey', { unique: false });
+        if (!assetStore.indexNames.contains('sourceMainTransactionId')) assetStore.createIndex('sourceMainTransactionId', 'sourceMainTransactionId', { unique: false });
+        if (!assetStore.indexNames.contains('assetType')) assetStore.createIndex('assetType', 'assetType', { unique: false });
+        if (!assetStore.indexNames.contains('status')) assetStore.createIndex('status', 'status', { unique: false });
+        if (!assetStore.indexNames.contains('usefulLifeMonths')) assetStore.createIndex('usefulLifeMonths', 'usefulLifeMonths', { unique: false });
+        if (!db.objectStoreNames.contains(STORES.debts)) {
+          const s = db.createObjectStore(STORES.debts, { keyPath: 'id' });
+          s.createIndex('debtDate', 'debtDate', { unique: false });
+          s.createIndex('period', 'period', { unique: false });
+          s.createIndex('status', 'status', { unique: false });
+          s.createIndex('recipientType', 'recipientType', { unique: false });
+          s.createIndex('sourceRowKey', 'sourceRowKey', { unique: false });
         }
         if (!db.objectStoreNames.contains(STORES.syncQueue)) {
           const s = db.createObjectStore(STORES.syncQueue, { keyPath: 'id' });

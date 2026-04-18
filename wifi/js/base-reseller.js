@@ -141,7 +141,7 @@ function moduleQuickFilterBar(tab, context='module'){
       <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Cari cepat</span><input id="${context}SearchFilter" type="text" value="${escapeHtml(rf.modSearch||'')}" placeholder="base / pelaku / catatan / nominal" class="w-full rounded-2xl border px-3 py-2"></label>
       <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Dari</span><input id="${context}StartFilter" type="date" value="${rf.modStart||''}" class="w-full rounded-2xl border px-3 py-2"></label>
       <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Sampai</span><input id="${context}EndFilter" type="date" value="${rf.modEnd||''}" class="w-full rounded-2xl border px-3 py-2"></label>
-      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Base</span><select id="${context}BaseFilter" class="w-full rounded-2xl border px-3 py-2"><option value="ALL">Semua Base</option>${APP.state.config.bases.map(base=>`<option value="${base.id}" ${rf.baseId===base.id?'selected':''}>${escapeHtml(base.name)}</option>`).join('')}</select></label>
+      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Base</span><select id="${context}BaseFilter" class="w-full rounded-2xl border px-3 py-2"><option value="ALL">Semua Base</option>${getConfig().bases.map(base=>`<option value="${base.id}" ${rf.baseId===base.id?'selected':''}>${escapeHtml(base.name)}</option>`).join('')}</select></label>
       <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Pelaku</span><select id="${context}ActorFilter" class="w-full rounded-2xl border px-3 py-2"><option value="ALL">Semua Pelaku</option>${actorOptions.map(opt=>`<option value="${opt.value}" ${rf.actorKey===opt.value?'selected':''}>${escapeHtml(opt.label)}</option>`).join('')}</select></label>
     </div>
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -272,8 +272,8 @@ function computedProfitRows(){
     const parts = [
       { recipient:'BASE', label:actor.baseName, nominal:Number(tx.baseShareAmount||0) },
       { recipient:'ACTOR', label:'Pelaku', nominal:Number(tx.actorShareAmount||0) },
-      { recipient:'OWNER', label:APP.state.config.ownerName || 'System', nominal:Number(tx.ownerShareAmount||0) },
-      { recipient:'PARTNER', label:APP.state.config.partnerName || 'Technical', nominal:Number(tx.partnerShareAmount||0) }
+      { recipient:'OWNER', label:getConfig().ownerName || 'System', nominal:Number(tx.ownerShareAmount||0) },
+      { recipient:'PARTNER', label:getConfig().partnerName || 'Technical', nominal:Number(tx.partnerShareAmount||0) }
     ];
     for(const part of parts){
       if(part.nominal <= 0) continue;
@@ -322,7 +322,7 @@ function moduleFormSection(meta){
       <div class="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">${meta.note}</div>
       ${sourceInfo}
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Base</span><select id="moduleBaseId" ${locked?'disabled':''} class="w-full rounded-2xl border px-3 py-3 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800"><option value="">Pilih base</option>${APP.state.config.bases.map(base=>`<option value="${base.id}" ${f.baseId===base.id?'selected':''}>${escapeHtml(base.name)}</option>`).join('')}</select></label>
+        <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Base</span><select id="moduleBaseId" ${locked?'disabled':''} class="w-full rounded-2xl border px-3 py-3 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800"><option value="">Pilih base</option>${getConfig().bases.map(base=>`<option value="${base.id}" ${f.baseId===base.id?'selected':''}>${escapeHtml(base.name)}</option>`).join('')}</select></label>
         <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Pelaku</span><select id="moduleActorKey" ${locked?'disabled':''} class="w-full rounded-2xl border px-3 py-3 disabled:bg-slate-100 disabled:text-slate-500 dark:disabled:bg-slate-800"><option value="">Pilih pelaku</option>${actors.map(a=>`<option value="${a.value}" ${(actorValue===a.value)?'selected':''}>${escapeHtml(a.label)}</option>`).join('')}</select></label>
       </div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -395,11 +395,11 @@ function moduleMasterPage(){
   return `
   <div class="space-y-4">
     <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Nama Partner/Technical</span><input id="partnerNameInput" type="text" value="${escapeHtml(APP.state.config.partnerName)}" class="w-full rounded-2xl border px-3 py-3"></label>
-      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Nama Owner/System</span><input id="ownerNameInput" type="text" value="${escapeHtml(APP.state.config.ownerName)}" class="w-full rounded-2xl border px-3 py-3"></label>
+      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Nama Partner/Technical</span><input id="partnerNameInput" type="text" value="${escapeHtml(getConfig().partnerName)}" class="w-full rounded-2xl border px-3 py-3"></label>
+      <label class="block text-sm"><span class="mb-1 block text-slate-500 dark:text-slate-400">Nama Owner/System</span><input id="ownerNameInput" type="text" value="${escapeHtml(getConfig().ownerName)}" class="w-full rounded-2xl border px-3 py-3"></label>
     </div>
     <div class="flex gap-2"><button id="saveIdentityBtn" class="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Simpan Nama</button><button id="addBaseBtn" class="rounded-2xl border px-4 py-2 text-sm font-semibold">+ Tambah Base</button></div>
-    <div class="space-y-4">${APP.state.config.bases.map(base=>`
+    <div class="space-y-4">${getConfig().bases.map(base=>`
       <div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
         <div class="grid grid-cols-1 gap-3 lg:grid-cols-6">
           <label class="block text-sm lg:col-span-2"><span class="mb-1 block text-slate-500 dark:text-slate-400">Nama Base</span><input data-base-field="name" data-base-id="${base.id}" type="text" value="${escapeHtml(base.name)}" class="w-full rounded-2xl border px-3 py-2"></label>
@@ -480,7 +480,7 @@ function fillModuleForm(tx){
   APP.state.moduleTab = typeToModuleTab(tx.moduleType);
   APP.state.forms.module = { txType:tx.moduleType, baseId:tx.baseId, actorKey:tx.actorKey, recipient:tx.recipient || 'ACTOR', nominal:Number(tx.nominal||0), notes:tx.notes||'', date:tx.date, time:tx.time, linkedDepositId:tx.linkedDepositId || '', sourceDepositSnapshot: tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') || null : null };
 }
-async function saveModuleConfig(){ await DB.put(STORES.settings, { key:SETTINGS_KEYS.moduleConfig, value: APP.state.config }); await loadState(); render(); showToast('Konfigurasi base/reseller berhasil disimpan.'); }
+async function saveModuleConfig(){ APP.state.config = getConfig(); await DB.put(STORES.settings, { key:SETTINGS_KEYS.moduleConfig, value: APP.state.config }); await loadState(); render(); showToast('Konfigurasi base/reseller berhasil disimpan.'); }
 function bindModuleEvents(){
   document.querySelectorAll('[data-module-tab]').forEach(btn=>btn.addEventListener('click', ()=>{ APP.state.moduleTab = btn.dataset.moduleTab; if(APP.state.moduleTab!=='masters'){ APP.state.forms.module.txType = moduleTabToType(APP.state.moduleTab); if(!APP.state.editModuleId) resetModuleForm(); } render(); }));
   document.getElementById('moduleBaseId')?.addEventListener('change', e=>{ APP.state.forms.module.baseId = e.target.value; APP.state.forms.module.actorKey = defaultActorKeyForBase(e.target.value); render(); });
@@ -496,15 +496,15 @@ function bindModuleEvents(){
   document.querySelectorAll('[data-module-edit]').forEach(btn=>btn.addEventListener('click', ()=>{ const tx=APP.state.moduleTransactions.find(x=>x.id===btn.dataset.moduleEdit); if(tx){ fillModuleForm(tx); APP.state.currentPage='modules'; render(); }}));
   document.querySelectorAll('[data-setor-from-deposit]').forEach(btn=>btn.addEventListener('click', ()=> startSetorFromDeposit(btn.dataset.setorFromDeposit)));
   document.querySelectorAll('[data-module-delete]').forEach(btn=>btn.addEventListener('click', async ()=>{ if(!confirm('Hapus transaksi modul ini?')) return; await DB.delete(STORES.moduleTransactions, btn.dataset.moduleDelete); await loadState(); render(); showToast('Transaksi modul dihapus.'); }));
-  document.getElementById('saveIdentityBtn')?.addEventListener('click', ()=>{ APP.state.config.partnerName = document.getElementById('partnerNameInput').value.trim() || 'Technical'; APP.state.config.ownerName = document.getElementById('ownerNameInput').value.trim() || 'System'; saveModuleConfig(); });
-  document.getElementById('addBaseBtn')?.addEventListener('click', ()=>{ APP.state.config.bases.push({ id:uuid(), name:'Base Baru', mode:'FULL', directEnabled:true, shares:{...DEFAULT_SHARE}, resellers:[] }); render(); });
+  document.getElementById('saveIdentityBtn')?.addEventListener('click', ()=>{ APP.state.config = getConfig(); APP.state.config.partnerName = document.getElementById('partnerNameInput').value.trim() || 'Technical'; APP.state.config.ownerName = document.getElementById('ownerNameInput').value.trim() || 'System'; saveModuleConfig(); });
+  document.getElementById('addBaseBtn')?.addEventListener('click', ()=>{ APP.state.config = getConfig(); APP.state.config.bases.push({ id:uuid(), name:'Base Baru', mode:'FULL', directEnabled:true, shares:{...DEFAULT_SHARE}, resellers:[] }); render(); });
   document.querySelectorAll('[data-base-field]').forEach(el=>el.addEventListener('input', ()=>{ const base=findBase(el.dataset.baseId); if(base) base[el.dataset.baseField] = el.value; }));
   document.querySelectorAll('[data-share-field]').forEach(el=>el.addEventListener('input', ()=>{ const base=findBase(el.dataset.baseId); if(base) base.shares[el.dataset.shareField] = Number(el.value||0); }));
   document.querySelectorAll('[data-base-toggle]').forEach(el=>el.addEventListener('change', ()=>{ const base=findBase(el.dataset.baseId); if(base) base[el.dataset.baseToggle] = !!el.checked; }));
   document.querySelectorAll('[data-add-reseller]').forEach(btn=>btn.addEventListener('click', ()=>{ const base=findBase(btn.dataset.addReseller); if(base){ base.resellers.push({ id:uuid(), name:'Reseller Baru' }); render(); } }));
   document.querySelectorAll('[data-reseller-name]').forEach(el=>el.addEventListener('input', ()=>{ const base=findBase(el.dataset.baseId); const res=(base?.resellers||[]).find(x=>x.id===el.dataset.resellerName); if(res) res.name = el.value; }));
   document.querySelectorAll('[data-delete-reseller]').forEach(btn=>btn.addEventListener('click', ()=>{ const base=findBase(btn.dataset.baseId); if(base){ base.resellers = base.resellers.filter(x=>x.id!==btn.dataset.deleteReseller); render(); } }));
-  document.querySelectorAll('[data-delete-base]').forEach(btn=>btn.addEventListener('click', ()=>{ if(!confirm('Hapus base ini?')) return; APP.state.config.bases = APP.state.config.bases.filter(x=>x.id!==btn.dataset.deleteBase); render(); }));
+  document.querySelectorAll('[data-delete-base]').forEach(btn=>btn.addEventListener('click', ()=>{ if(!confirm('Hapus base ini?')) return; getConfig().bases = getConfig().bases.filter(x=>x.id!==btn.dataset.deleteBase); render(); }));
 
   document.getElementById('moduleSearchFilter')?.addEventListener('input', e=>{ APP.state.moduleFilters.modSearch = e.target.value; scheduleRender({ preserveInputId:'moduleSearchFilter', preserveCursor:true }); });
   document.getElementById('moduleStartFilter')?.addEventListener('change', e=>{ APP.state.moduleFilters.modStart = e.target.value; render(); });

@@ -7,9 +7,10 @@ const SYNC_CONFIG = {
     categories: 'id',
     mainTransactions: 'id',
     moduleTransactions: 'id',
-    reserveTransactions: 'id'
+    reserveTransactions: 'id',
+    assets: 'id'
   },
-  MANAGED_STORES: ['settings','categories','mainTransactions','moduleTransactions','reserveTransactions']
+  MANAGED_STORES: ['settings','categories','mainTransactions','moduleTransactions','reserveTransactions','assets','debts']
 };
 
 window.SYNC = {
@@ -207,7 +208,7 @@ DB.delete = async (store, key) => {
       id, storeName:store, recordKey, op:'upsert', payload:structuredClone(value), status:'pending', error:'', updatedAt:now
     });
     await this.refreshStats();
-    if(APP.state.currentPage==='dashboard' || APP.state.currentPage==='syncFailed') render();
+    if(APP.state.config && (APP.state.currentPage==='dashboard' || APP.state.currentPage==='syncFailed')) render();
   },
   async enqueueDelete(store, key){
     if(!key) return;
@@ -217,7 +218,7 @@ DB.delete = async (store, key) => {
       id, storeName:store, recordKey:key, op:'delete', payload:null, status:'pending', error:'', updatedAt:now
     });
     await this.refreshStats();
-    if(APP.state.currentPage==='dashboard' || APP.state.currentPage==='syncFailed') render();
+    if(APP.state.config && (APP.state.currentPage==='dashboard' || APP.state.currentPage==='syncFailed')) render();
   },
 
   async bootstrapAllLocalToQueue(force=false){

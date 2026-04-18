@@ -27,7 +27,7 @@ function mainTransactionsPage(){
   <div class="space-y-4">
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
       <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div><h2 class="text-xl font-bold">Transaksi Utama</h2><p class="text-sm text-slate-500 dark:text-slate-400">Pendapatan dan Pengeluaran.</p></div>
+        <div><h2 class="text-xl font-bold">Transaksi Utama</h2><p class="text-sm text-slate-500 dark:text-slate-400">Pendapatan dan Pengeluaran. Pengeluaran kategori Aset akan otomatis masuk ke halaman Aset.</p></div>
         <button id="resetMainFormBtn" class="rounded-2xl border px-4 py-2 text-sm font-semibold">Reset Form</button>
       </div>
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -101,6 +101,7 @@ async function saveMainTransaction(){
   if(prev?.source === 'INTEGRATION') payload.source = 'INTEGRATION';
   await DB.put(STORES.mainTransactions, payload);
   if(typeof syncReserveAutoFromMainTransaction === 'function') await syncReserveAutoFromMainTransaction(payload);
+  if(typeof syncAssetFromMainTransaction === 'function') await syncAssetFromMainTransaction(payload);
   await loadState(); resetMainForm(true); render(); showToast('Transaksi utama berhasil disimpan.');
 }
 function fillMainForm(tx){ APP.state.editMainId = tx.id; APP.state.forms.main = { type:tx.type, categoryPath:[...(tx.categoryPath||[])], amountRaw:Number(tx.amount||0), notes:tx.notes||'', date:tx.date, time:tx.time }; }
@@ -122,5 +123,5 @@ function bindMainEvents(){
   document.getElementById('mainFilterType')?.addEventListener('change', e=>{ APP.state.mainFilters.type=e.target.value; render(); });
   document.getElementById('mainFilterSearch')?.addEventListener('input', e=>{ APP.state.mainFilters.search=e.target.value; scheduleRender({ preserveInputId:'mainFilterSearch', preserveCursor:true }); });
   document.querySelectorAll('[data-main-edit]').forEach(btn => btn.addEventListener('click', ()=>{ const tx = APP.state.mainTransactions.find(x=>x.id===btn.dataset.mainEdit); if(tx){ fillMainForm(tx); APP.state.currentPage='main'; render(); }}));
-  document.querySelectorAll('[data-main-delete]').forEach(btn => btn.addEventListener('click', async ()=>{ if(!confirm('Hapus transaksi ini?')) return; if(typeof deleteReserveAutoByMainId === 'function') await deleteReserveAutoByMainId(btn.dataset.mainDelete); await DB.delete(STORES.mainTransactions, btn.dataset.mainDelete); await loadState(); render(); showToast('Transaksi utama dihapus.'); }));
+  document.querySelectorAll('[data-main-delete]').forEach(btn => btn.addEventListener('click', async ()=>{ if(!confirm('Hapus transaksi ini?')) return; if(typeof deleteReserveAutoByMainId === 'function') await deleteReserveAutoByMainId(btn.dataset.mainDelete); if(typeof deleteAssetAutoByMainId === 'function') await deleteAssetAutoByMainId(btn.dataset.mainDelete); await DB.delete(STORES.mainTransactions, btn.dataset.mainDelete); await loadState(); render(); showToast('Transaksi utama dihapus.'); }));
 }

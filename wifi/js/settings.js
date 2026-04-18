@@ -24,7 +24,7 @@ function settingsPage(){
 
     <section class="rounded-3xl border border-rose-200 bg-white p-4 shadow-soft dark:border-rose-900 dark:bg-slate-900">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div><h3 class="text-lg font-bold text-rose-600 dark:text-rose-400">Hapus Data Lokal Aplikasi</h3><p class="text-sm text-slate-500 dark:text-slate-400">Menghapus semua data lokal dari aplikasi ini.</p></div>
+        <div><h3 class="text-lg font-bold text-rose-600 dark:text-rose-400">Hapus Data Lokal Aplikasi</h3><p class="text-sm text-slate-500 dark:text-slate-400">Menghapus seluruh database lokal aplikasi ini secara umum, termasuk fitur yang ditambahkan di kemudian hari.</p></div>
         <button id="clearLocalDataBtn" class="rounded-2xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:hover:bg-rose-950/40">Hapus Data Lokal</button>
       </div>
     </section>
@@ -36,7 +36,7 @@ async function deleteCategory(catId){ const ids = [catId, ...childCategoriesRecu
   for(const id of ids) await DB.delete(STORES.categories, id); await loadState(); render(); showToast('Kategori dihapus.'); }
 async function saveCategoryNames(){ const inputs = [...document.querySelectorAll('[data-cat-name]')]; for(const input of inputs){ const cat = categoryById(input.dataset.catName); if(cat) await DB.put(STORES.categories, { ...cat, name: input.value.trim() || 'Tanpa Nama' }); } await loadState(); render(); showToast('Perubahan kategori disimpan.'); }
 async function clearLocalAppData(){
-  const ok = confirm('PERINGATAN: Semua data lokal aplikasi ini akan dihapus dari browser Anda, termasuk pengaturan, kategori, transaksi utama, transaksi modul, dan transaksi cadangan.\n\nLanjutkan hapus data lokal?');
+  const ok = confirm('PERINGATAN: Semua data lokal aplikasi ini akan dihapus dari browser Anda, termasuk pengaturan, kategori, transaksi utama, transaksi modul, transaksi cadangan, aset, antrean sync, dan fitur lain yang tersimpan di database lokal.\n\nLanjutkan hapus data lokal?');
   if(!ok) return;
   try {
     const db = await DB.open();
