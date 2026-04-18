@@ -268,12 +268,18 @@ function dashboardPage(){
     </section>
   </div>`;
 }
+function bindPersistentUiEvents(){
+  const btn = document.getElementById('themeToggle');
+  if(btn && !btn.dataset.boundThemeToggle){
+    btn.dataset.boundThemeToggle = '1';
+    btn.addEventListener('click', ()=>{
+      const next = APP.state.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      render();
+    });
+  }
+}
 function bindCoreEvents(){
-  document.getElementById('themeToggle')?.addEventListener('click', ()=>{
-  const next = APP.state.theme === 'dark' ? 'light' : 'dark';
-  applyTheme(next);
-  render();
-});
   document.getElementById('dashboardMainFilterStart')?.addEventListener('change', e=>{ APP.state.mainFilters.startDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterEnd')?.addEventListener('change', e=>{ APP.state.mainFilters.endDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterType')?.addEventListener('change', e=>{ APP.state.mainFilters.type=e.target.value; render(); });
@@ -317,4 +323,4 @@ function render(){
   if(APP.state.currentPage==='settings') root.innerHTML = settingsPage();
   bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); updateClock();
 }
-window.addEventListener('DOMContentLoaded', async ()=>{ await DB.open(); await seedIfNeeded(); await loadState(); render(); updateClock(); setInterval(updateClock, 1000); });
+window.addEventListener('DOMContentLoaded', async ()=>{ await DB.open(); await seedIfNeeded(); await loadState(); bindPersistentUiEvents(); render(); updateClock(); setInterval(updateClock, 1000); });
