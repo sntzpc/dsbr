@@ -8,9 +8,12 @@ const SYNC_CONFIG = {
     mainTransactions: 'id',
     moduleTransactions: 'id',
     reserveTransactions: 'id',
-    assets: 'id'
+    assets: 'id',
+    debts: 'id',
+    ipRegisters: 'id',
+    ipRegisterLogs: 'id'
   },
-  MANAGED_STORES: ['settings','categories','mainTransactions','moduleTransactions','reserveTransactions','assets','debts']
+  MANAGED_STORES: ['settings','categories','mainTransactions','moduleTransactions','reserveTransactions','assets','debts','ipRegisters','ipRegisterLogs']
 };
 
 window.SYNC = {

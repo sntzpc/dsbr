@@ -49,47 +49,24 @@ function reportProfitSummaryRows(){
 function getBalanceInfoReportData(){
   const start = APP.state.reportFilters.balanceStart || APP.state.reportFilters.mainStart || '';
   const end = APP.state.reportFilters.balanceEnd || APP.state.reportFilters.mainEnd || '';
-  const mainRows = [...APP.state.mainTransactions]
-    .filter(x => !start || x.date >= start)
-    .filter(x => !end || x.date <= end);
-  const pendapatan = mainRows.filter(x=>x.type==='PENDAPATAN').reduce((s,x)=>s+Number(x.amount||0),0);
-  const pengeluaran = mainRows.filter(x=>x.type==='PENGELUARAN').reduce((s,x)=>s+Number(x.amount||0),0);
-  const saldoUtama = pendapatan - pengeluaran;
-
-  const reserveFilters = { startDate:start, endDate:end, fundType:'ALL', entryType:'ALL', search:'' };
-  const reserve = typeof reserveSummaryByFund === 'function' ? reserveSummaryByFund(reserveFilters) : { total:{balance:0}, funds:{} };
-
-  const moduleRows = [...APP.state.moduleTransactions]
-    .filter(x => !start || x.date >= start)
-    .filter(x => !end || x.date <= end);
-  const baseMap = new Map();
-  moduleRows.filter(x=>['DEPOSIT','SETOR'].includes(x.moduleType)).forEach(tx=>{
-    const base = findBase(tx.baseId);
-    if(!base) return;
-    const key = tx.actorKey || actorKey(tx.baseId, tx.resellerId || '');
-    if(!baseMap.has(key)){
-      baseMap.set(key, { baseId:tx.baseId, baseName:base.name, actorName:actorLabel(base, tx.resellerId), receivable:0 });
-    }
-    const row = baseMap.get(key);
-    if(tx.moduleType==='DEPOSIT') row.receivable += Number(tx.expectedSetor||0);
-    if(tx.moduleType==='SETOR') row.receivable -= Number(tx.nominal||0);
-  });
-  const piutangDetail = [...baseMap.values()]
-    .map(r=>({ ...r, receivable: Math.max(0, r.receivable) }))
-    .filter(r=>r.receivable>0)
-    .sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
-  const piutangByBaseMap = new Map();
-  piutangDetail.forEach(row=>{
-    const key = row.baseId || '__NOBASE__';
-    if(!piutangByBaseMap.has(key)) piutangByBaseMap.set(key, { baseId:key, baseName:row.baseName || 'Tanpa Base', receivable:0, actors:0 });
-    const item = piutangByBaseMap.get(key);
-    item.receivable += Number(row.receivable || 0);
-    item.actors += 1;
-  });
-  const piutangPerBase = [...piutangByBaseMap.values()].sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
-  const totalPiutang = piutangPerBase.reduce((s,x)=>s+Number(x.receivable||0),0);
-  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) + totalPiutang;
-  return { start, end, pendapatan, pengeluaran, saldoUtama, reserve, piutangPerBase, piutangDetail, totalPiutang, saldoAktual };
+  const openingEnd = endDateBefore(start);
+  const opening = cashSnapshotAt(openingEnd);
+  const ending = cashSnapshotAt(end);
+  return {
+    start, end, openingEnd,
+    opening, ending,
+    pendapatan: Number(ending.pendapatan||0) - Number(opening.pendapatan||0),
+    pengeluaran: Number(ending.pengeluaran||0) - Number(opening.pengeluaran||0),
+    saldoUtama: Number(ending.saldoUtama||0),
+    reserve: ending.reserve,
+    piutangPerBase: ending.receivable.perBase,
+    piutangDetail: ending.receivable.detail,
+    totalPiutang: Number(ending.receivable.total||0),
+    saldoAktual: Number(ending.saldoAkhir||0),
+    deltaSaldoAkhir: Number(ending.saldoAkhir||0) - Number(opening.saldoAkhir||0),
+    deltaReserve: Number(ending.reserve.total?.balance||0) - Number(opening.reserve.total?.balance||0),
+    deltaPiutang: Number(ending.receivable.total||0) - Number(opening.receivable.total||0)
+  };
 }
 function balanceInfoSection(){
   const info = getBalanceInfoReportData();
@@ -108,10 +85,12 @@ function balanceInfoSection(){
         <button id="applyBalanceReportBtn" class="rounded-2xl border px-4 py-2 text-sm font-semibold">Terapkan Periode Saldo</button>
       </div>
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        ${card('Saldo Utama', `Rp ${rupiah(info.saldoUtama)}`, `Pendapatan Rp ${rupiah(info.pendapatan)} · Pengeluaran Rp ${rupiah(info.pengeluaran)}`, info.saldoUtama>=0?'text-blue-600':'text-amber-600')}
-        ${card('Zakat', `Rp ${rupiah(info.reserve.funds?.ZAKAT?.balance || 0)}`, `Masuk Rp ${rupiah(info.reserve.funds?.ZAKAT?.credit || 0)} · Keluar Rp ${rupiah(info.reserve.funds?.ZAKAT?.debit || 0)}`, 'text-violet-600')}
-        ${card('Infaq', `Rp ${rupiah(info.reserve.funds?.INFAQ?.balance || 0)}`, `Masuk Rp ${rupiah(info.reserve.funds?.INFAQ?.credit || 0)} · Keluar Rp ${rupiah(info.reserve.funds?.INFAQ?.debit || 0)}`, 'text-violet-600')}
-        ${card('Penyusutan', `Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Masuk Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.credit || 0)} · Keluar Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.debit || 0)}`, 'text-violet-600')}
+        ${card('Saldo Sebelum Periode', `Rp ${rupiah(info.opening.saldoAkhir)}`, info.start ? `Setara saldo akhir ${formatDate(info.openingEnd)}` : 'Awal data', info.opening.saldoAkhir>=0?'text-blue-600':'text-amber-600')}
+        ${card('Mutasi Periode', `Rp ${rupiah(info.deltaSaldoAkhir)}`, `Pendapatan Rp ${rupiah(info.pendapatan)} · Pengeluaran Rp ${rupiah(info.pengeluaran)}`, info.deltaSaldoAkhir>=0?'text-emerald-600':'text-rose-600')}
+        ${card('Saldo Utama', `Rp ${rupiah(info.saldoUtama)}`, `Saldo utama sampai ${info.end ? formatDate(info.end) : 'seluruh data'}`, info.saldoUtama>=0?'text-blue-600':'text-amber-600')}
+        ${card('Zakat', `Rp ${rupiah(info.reserve.funds?.ZAKAT?.balance || 0)}`, `Saldo awal Rp ${rupiah(info.opening.reserve.funds?.ZAKAT?.balance || 0)}`, 'text-violet-600')}
+        ${card('Infaq', `Rp ${rupiah(info.reserve.funds?.INFAQ?.balance || 0)}`, `Saldo awal Rp ${rupiah(info.opening.reserve.funds?.INFAQ?.balance || 0)}`, 'text-violet-600')}
+        ${card('Penyusutan', `Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Saldo awal Rp ${rupiah(info.opening.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'text-violet-600')}
         ${card('Total Piutang Base', `Rp ${rupiah(info.totalPiutang)}`, `${info.piutangPerBase.length} base masih punya piutang`, info.totalPiutang>0?'text-amber-600':'text-emerald-600')}
         ${card('Saldo Akhir', `Rp ${rupiah(info.saldoAktual)}`, 'Saldo Utama + Dana Cadangan + Piutang', info.saldoAktual>=0?'text-emerald-600':'text-rose-600')}
       </div>
@@ -124,9 +103,11 @@ function exportBalanceInfoXlsx(){
   const wb = XLSX.utils.book_new();
   const summaryRows = [
     { Komponen:'Periode', Nilai:`${info.start || '-'} s.d. ${info.end || '-'}`, Keterangan:'Filter laporan informasi saldo' },
-    { Komponen:'Pendapatan', Nilai:Number(info.pendapatan||0), Keterangan:'Transaksi utama jenis pendapatan' },
-    { Komponen:'Pengeluaran', Nilai:Number(info.pengeluaran||0), Keterangan:'Transaksi utama jenis pengeluaran' },
-    { Komponen:'Saldo Utama', Nilai:Number(info.saldoUtama||0), Keterangan:'Pendapatan - Pengeluaran' },
+    { Komponen:'Saldo Sebelum Periode', Nilai:Number(info.opening.saldoAkhir||0), Keterangan: info.start ? `Setara saldo akhir ${formatDate(info.openingEnd)}` : 'Awal data' },
+    { Komponen:'Pendapatan Periode', Nilai:Number(info.pendapatan||0), Keterangan:'Pendapatan dalam periode terpilih' },
+    { Komponen:'Pengeluaran Periode', Nilai:Number(info.pengeluaran||0), Keterangan:'Pengeluaran dalam periode terpilih' },
+    { Komponen:'Mutasi Saldo Periode', Nilai:Number(info.deltaSaldoAkhir||0), Keterangan:'Perubahan saldo akhir selama periode' },
+    { Komponen:'Saldo Utama', Nilai:Number(info.saldoUtama||0), Keterangan:'Saldo utama kumulatif sampai akhir periode' },
     { Komponen:'Zakat', Nilai:Number(info.reserve.funds?.ZAKAT?.balance || 0), Keterangan:'Saldo dana Zakat' },
     { Komponen:'Infaq', Nilai:Number(info.reserve.funds?.INFAQ?.balance || 0), Keterangan:'Saldo dana Infaq' },
     { Komponen:'Penyusutan', Nilai:Number(info.reserve.funds?.PENYUSUTAN?.balance || 0), Keterangan:'Saldo dana Penyusutan' },
@@ -158,9 +139,11 @@ function exportBalanceInfoPdf(){
     startY: y,
     head: [['Komponen','Nilai','Keterangan']],
     body: [
-      ['Pendapatan', `Rp ${rupiah(info.pendapatan)}`, 'Transaksi utama pendapatan'],
-      ['Pengeluaran', `Rp ${rupiah(info.pengeluaran)}`, 'Transaksi utama pengeluaran'],
-      ['Saldo Utama', `Rp ${rupiah(info.saldoUtama)}`, 'Pendapatan - Pengeluaran'],
+      ['Saldo Sebelum Periode', `Rp ${rupiah(info.opening.saldoAkhir)}`, info.start ? `Setara saldo akhir ${formatDate(info.openingEnd)}` : 'Awal data'],
+      ['Pendapatan Periode', `Rp ${rupiah(info.pendapatan)}`, 'Transaksi utama pendapatan dalam periode'],
+      ['Pengeluaran Periode', `Rp ${rupiah(info.pengeluaran)}`, 'Transaksi utama pengeluaran dalam periode'],
+      ['Mutasi Saldo Periode', `Rp ${rupiah(info.deltaSaldoAkhir)}`, 'Perubahan saldo akhir selama periode'],
+      ['Saldo Utama', `Rp ${rupiah(info.saldoUtama)}`, 'Saldo utama kumulatif sampai akhir periode'],
       ['Zakat', `Rp ${rupiah(info.reserve.funds?.ZAKAT?.balance || 0)}`, 'Saldo dana Zakat'],
       ['Infaq', `Rp ${rupiah(info.reserve.funds?.INFAQ?.balance || 0)}`, 'Saldo dana Infaq'],
       ['Penyusutan', `Rp ${rupiah(info.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'Saldo dana Penyusutan'],
@@ -449,7 +432,7 @@ function reportsPage(){
   </div>`;
 }
 async function exportBackup(){
-  const data = { version:4, exportedAt:new Date().toISOString(), settings:await DB.getAll(STORES.settings), categories:await DB.getAll(STORES.categories), mainTransactions:await DB.getAll(STORES.mainTransactions), moduleTransactions:await DB.getAll(STORES.moduleTransactions), reserveTransactions:await DB.getAll(STORES.reserveTransactions), assets:await DB.getAll(STORES.assets), debts:await DB.getAll(STORES.debts) };
+  const data = { version:5, exportedAt:new Date().toISOString(), settings:await DB.getAll(STORES.settings), categories:await DB.getAll(STORES.categories), mainTransactions:await DB.getAll(STORES.mainTransactions), moduleTransactions:await DB.getAll(STORES.moduleTransactions), reserveTransactions:await DB.getAll(STORES.reserveTransactions), assets:await DB.getAll(STORES.assets), debts:await DB.getAll(STORES.debts), ipRegisters:await DB.getAll(STORES.ipRegisters), ipRegisterLogs:await DB.getAll(STORES.ipRegisterLogs) };
   const blob = new Blob([JSON.stringify(data,null,2)], { type:'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup-keuangan-wifi-${todayDateIso()}.json`; a.click(); URL.revokeObjectURL(a.href);
 }
@@ -463,6 +446,8 @@ async function importBackup(file){
   for(const row of await DB.getAll(STORES.reserveTransactions)) await DB.delete(STORES.reserveTransactions, row.id);
   for(const row of await DB.getAll(STORES.assets)) await DB.delete(STORES.assets, row.id);
   for(const row of await DB.getAll(STORES.debts)) await DB.delete(STORES.debts, row.id);
+  for(const row of await DB.getAll(STORES.ipRegisters)) await DB.delete(STORES.ipRegisters, row.id);
+  for(const row of await DB.getAll(STORES.ipRegisterLogs)) await DB.delete(STORES.ipRegisterLogs, row.id);
   for(const row of data.settings) await DB.put(STORES.settings, row);
   for(const row of data.categories) await DB.put(STORES.categories, row);
   for(const row of (data.mainTransactions||[])) await DB.put(STORES.mainTransactions, row);
@@ -470,6 +455,8 @@ async function importBackup(file){
   for(const row of (data.reserveTransactions||[])) await DB.put(STORES.reserveTransactions, row);
   for(const row of (data.assets||[])) await DB.put(STORES.assets, row);
   for(const row of (data.debts||[])) await DB.put(STORES.debts, row);
+  for(const row of (data.ipRegisters||[])) await DB.put(STORES.ipRegisters, row);
+  for(const row of (data.ipRegisterLogs||[])) await DB.put(STORES.ipRegisterLogs, row);
   await loadState(); render(); showToast('Backup berhasil diimpor.');
 }
 function exportReportsXlsx(){

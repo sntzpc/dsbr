@@ -5,7 +5,9 @@ const DEFAULT_SHEETS = {
   moduleTransactions: ['id','json','updatedAt'],
   reserveTransactions: ['id','json','updatedAt'],
   assets: ['id','json','updatedAt'],
-  debts: ['id','json','updatedAt']
+  debts: ['id','json','updatedAt'],
+  ipRegisters: ['id','json','updatedAt'],
+  ipRegisterLogs: ['id','json','updatedAt']
 };
 
 function doGet(e){

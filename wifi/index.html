@@ -21,9 +21,14 @@
     <header class="sticky top-0 z-30 border-b border-slate-200/70 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
       <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between gap-3">
-          <div>
-            <h1 class="text-lg sm:text-2xl font-bold tracking-tight">Keuangan WiFi Hotspot</h1>
-            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Pendapatan &amp; Pengeluaran + Modul Base/Reseller</p>
+          <div class="flex min-w-0 items-start gap-3">
+            <button id="mobileNavToggle" type="button" aria-label="Buka menu" aria-controls="appSidebar" aria-expanded="false" class="mobile-nav-toggle inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 lg:hidden">
+              <span class="text-xl leading-none">☰</span>
+            </button>
+            <div class="min-w-0">
+              <h1 class="text-lg sm:text-2xl font-bold tracking-tight">Keuangan WiFi Hotspot</h1>
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Pendapatan &amp; Pengeluaran + Modul Base/Reseller</p>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <span id="clockBadge" class="hidden sm:inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"></span>
@@ -38,7 +43,8 @@
 
     <main class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside class="rounded-3xl border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 h-fit">
+        <div id="mobileNavOverlay" class="mobile-nav-overlay lg:hidden" hidden></div>
+        <aside id="appSidebar" class="mobile-sidebar rounded-3xl border border-slate-200 bg-white p-3 shadow-soft dark:border-slate-800 dark:bg-slate-900 h-fit">
           <nav class="space-y-2" id="navMenu"></nav>
           <div class="mt-4 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
             <p class="font-semibold">Struktur</p>
@@ -60,6 +66,7 @@
   <script src="js/reserve-funds.js"></script>
   <script src="js/assets.js"></script>
   <script src="js/debts.js"></script>
+  <script src="js/ip-register.js"></script>
   <script src="js/reports.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/sync.js"></script>

@@ -1,5 +1,5 @@
 const DB_NAME = 'wifiHotspotKeuanganModularDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORES = {
   settings: 'settings',
   categories: 'categories',
@@ -8,6 +8,8 @@ const STORES = {
   reserveTransactions: 'reserveTransactions',
   assets: 'assets',
   debts: 'debts',
+  ipRegisters: 'ipRegisters',
+  ipRegisterLogs: 'ipRegisterLogs',
   syncQueue: 'syncQueue',
   syncMeta: 'syncMeta'
 };
@@ -65,6 +67,22 @@ window.DB = {
           s.createIndex('status', 'status', { unique: false });
           s.createIndex('recipientType', 'recipientType', { unique: false });
           s.createIndex('sourceRowKey', 'sourceRowKey', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(STORES.ipRegisters)) {
+          const s = db.createObjectStore(STORES.ipRegisters, { keyPath: 'id' });
+          s.createIndex('seqNo', 'seqNo', { unique: false });
+          s.createIndex('ipAddress', 'ipAddress', { unique: false });
+          s.createIndex('status', 'status', { unique: false });
+          s.createIndex('locationKey', 'locationKey', { unique: false });
+          s.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORES.ipRegisterLogs)) {
+          const s = db.createObjectStore(STORES.ipRegisterLogs, { keyPath: 'id' });
+          s.createIndex('registerId', 'registerId', { unique: false });
+          s.createIndex('eventDate', 'eventDate', { unique: false });
+          s.createIndex('eventType', 'eventType', { unique: false });
+          s.createIndex('updatedAt', 'updatedAt', { unique: false });
         }
         if (!db.objectStoreNames.contains(STORES.syncQueue)) {
           const s = db.createObjectStore(STORES.syncQueue, { keyPath: 'id' });

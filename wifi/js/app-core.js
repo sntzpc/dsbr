@@ -24,6 +24,7 @@ const APP = {
     { key: 'reserve', label: 'Transaksi Cadangan', icon: '🏦' },
     { key: 'assets', label: 'Aset', icon: '🖥️' },
     { key: 'debts', label: 'Hutang', icon: '🧾' },
+    { key: 'ipregister', label: 'Register IP AP', icon: '📡' },
     { key: 'reports', label: 'Laporan', icon: '📑' },
     { key: 'settings', label: 'Pengaturan', icon: '⚙️' }
   ],
@@ -36,6 +37,8 @@ const APP = {
     reserveTransactions: [],
     assets: [],
     debts: [],
+    ipRegisters: [],
+    ipRegisterLogs: [],
     config: null,
     mainFilters: { startDate:'', endDate:'', type:'ALL', search:'' },
     moduleFilters: { modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL' },
@@ -43,6 +46,7 @@ const APP = {
     reserveFilters: { startDate:'', endDate:'', fundType:'ALL', entryType:'ALL', search:'' },
     assetFilters: { startDate:'', endDate:'', search:'' },
     debtFilters: { startDate:'', endDate:'', status:'ALL', recipientType:'ALL', period:'', search:'' },
+    ipFilters: { status:'ALL', locationKey:'ALL', search:'' },
     forms: {
       main: { type:'PENDAPATAN', categoryPath:[], amountRaw:0, notes:'', date:'', time:'' },
       module: { txType:'DEPOSIT', baseId:'', actorKey:'', recipient:'ACTOR', nominal:0, notes:'', date:'', time:'' },
@@ -51,7 +55,8 @@ const APP = {
     editMainId: null,
     editModuleId: null,
     editReserveId: null,
-    moduleTab: 'deposit'
+    moduleTab: 'deposit',
+    dashboardChart: { grouping:'monthly', selectedKey:'' }
   }
 };
 window.APP = APP;
@@ -177,48 +182,227 @@ async function loadState(){
   APP.state.reserveTransactions = (await DB.getAll(STORES.reserveTransactions)).sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
   APP.state.assets = (await DB.getAll(STORES.assets)).sort((a,b)=>`${b.assetDate || ''} ${b.createdAt || ''}`.localeCompare(`${a.assetDate || ''} ${a.createdAt || ''}`));
   APP.state.debts = (await DB.getAll(STORES.debts)).sort((a,b)=>`${b.debtDate || ''} ${b.debtTime || ''}`.localeCompare(`${a.debtDate || ''} ${a.debtTime || ''}`));
+  APP.state.ipRegisters = (await DB.getAll(STORES.ipRegisters)).sort((a,b)=>String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  APP.state.ipRegisterLogs = (await DB.getAll(STORES.ipRegisterLogs)).sort((a,b)=>`${b.eventDate || ''} ${b.eventTime || ''}`.localeCompare(`${a.eventDate || ''} ${a.eventTime || ''}`));
   if(!APP.state.forms.main.date) resetMainForm();
   if(!APP.state.forms.module.date) resetModuleForm();
   if(!APP.state.forms.reserve.date && typeof resetReserveForm === 'function') resetReserveForm();
 }
 function card(title, value, subtitle='', accent='text-slate-900 dark:text-white'){ return `<div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900"><p class="text-sm text-slate-500 dark:text-slate-400">${title}</p><p class="mt-2 text-2xl font-bold ${accent}">${value}</p><p class="mt-2 text-xs text-slate-500 dark:text-slate-400">${subtitle}</p></div>`; }
+
+function addDaysIso(date, days){
+  if(!date) return '';
+  const [y,m,d] = String(date).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m||1)-1, d||1));
+  dt.setUTCDate(dt.getUTCDate() + Number(days||0));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(dt.getUTCDate()).padStart(2,'0');
+  return `${yy}-${mm}-${dd}`;
+}
+function endDateBefore(startDate=''){ return startDate ? addDaysIso(startDate, -1) : ''; }
+function isoMonthLabel(iso=''){
+  if(!iso) return '-';
+  const [y,m] = String(iso).split('-');
+  const names = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return `${names[Number(m||1)-1] || m} ${y}`;
+}
+function formatRangeLabel(start='', end=''){
+  if(start && end) return `${formatDate(start)} - ${formatDate(end)}`;
+  if(start) return `Mulai ${formatDate(start)}`;
+  if(end) return `Sampai ${formatDate(end)}`;
+  return 'Semua Periode';
+}
+function startOfWeekIso(date=''){
+  if(!date) return '';
+  const [y,m,d] = String(date).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m||1)-1, d||1));
+  const day = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() - day + 1);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(dt.getUTCDate()).padStart(2,'0');
+  return `${yy}-${mm}-${dd}`;
+}
+function endOfWeekIso(date=''){ return addDaysIso(startOfWeekIso(date), 6); }
+function weekLabel(start=''){
+  const end = endOfWeekIso(start);
+  return `${formatDate(start)} - ${formatDate(end)}`;
+}
+function quarterOfMonth(month){ return Math.floor((Number(month||1)-1)/3)+1; }
+function balanceReserveAt(end=''){
+  const reserveFilters = { startDate:'', endDate:end || '', fundType:'ALL', entryType:'ALL', search:'' };
+  return typeof reserveSummaryByFund === 'function' ? reserveSummaryByFund(reserveFilters) : { total:{ balance:0 }, funds:{} };
+}
+function receivableSnapshotAt(end=''){
+  const rows = [...APP.state.moduleTransactions]
+    .filter(x => !end || x.date <= end)
+    .filter(x => ['DEPOSIT','SETOR'].includes(x.moduleType));
+  const actorMap = new Map();
+  for(const tx of rows){
+    const base = findBase(tx.baseId);
+    if(!base) continue;
+    const key = tx.actorKey || actorKey(tx.baseId, tx.resellerId || '');
+    if(!actorMap.has(key)) actorMap.set(key, { actorKey:key, baseId:tx.baseId, baseName:base.name, actorName:actorLabel(base, tx.resellerId), receivable:0 });
+    const row = actorMap.get(key);
+    if(tx.moduleType === 'DEPOSIT') row.receivable += Number(tx.expectedSetor || 0);
+    if(tx.moduleType === 'SETOR') row.receivable -= Number(tx.nominal || 0);
+  }
+  const detail = [...actorMap.values()].map(r=>({ ...r, receivable:Math.max(0, Number(r.receivable||0)) })).filter(r=>r.receivable>0).sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
+  const baseMap = new Map();
+  for(const row of detail){
+    const key = row.baseId || '__NOBASE__';
+    if(!baseMap.has(key)) baseMap.set(key, { baseId:key, baseName:row.baseName || 'Tanpa Base', receivable:0, actors:0 });
+    const item = baseMap.get(key);
+    item.receivable += Number(row.receivable||0);
+    item.actors += 1;
+  }
+  const perBase = [...baseMap.values()].sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
+  return { detail, perBase, total:perBase.reduce((s,x)=>s+Number(x.receivable||0),0) };
+}
+function cashSnapshotAt(end=''){
+  const mainRows = [...APP.state.mainTransactions].filter(x => !end || x.date <= end);
+  const pendapatan = mainRows.filter(x=>x.type==='PENDAPATAN').reduce((s,x)=>s+Number(x.amount||0),0);
+  const pengeluaran = mainRows.filter(x=>x.type==='PENGELUARAN').reduce((s,x)=>s+Number(x.amount||0),0);
+  const saldoUtama = pendapatan - pengeluaran;
+  const reserve = balanceReserveAt(end);
+  const receivable = receivableSnapshotAt(end);
+  const saldoAkhir = saldoUtama + Number(reserve.total?.balance || 0) + Number(receivable.total || 0);
+  return { end, pendapatan, pengeluaran, saldoUtama, reserve, receivable, saldoAkhir };
+}
+function buildDashboardBalanceInfo(){
+  const start = APP.state.mainFilters.startDate || '';
+  const end = APP.state.mainFilters.endDate || '';
+  const openingEnd = endDateBefore(start);
+  const opening = cashSnapshotAt(openingEnd);
+  const ending = cashSnapshotAt(end);
+  return {
+    start, end, openingEnd,
+    opening, ending,
+    delta: {
+      pendapatan: Number(ending.pendapatan||0) - Number(opening.pendapatan||0),
+      pengeluaran: Number(ending.pengeluaran||0) - Number(opening.pengeluaran||0),
+      saldoUtama: Number(ending.saldoUtama||0) - Number(opening.saldoUtama||0),
+      reserve: Number(ending.reserve.total?.balance||0) - Number(opening.reserve.total?.balance||0),
+      piutang: Number(ending.receivable.total||0) - Number(opening.receivable.total||0),
+      saldoAkhir: Number(ending.saldoAkhir||0) - Number(opening.saldoAkhir||0)
+    }
+  };
+}
+function chartBucketMeta(grouping, date){
+  const [y,m,d] = String(date||'').split('-');
+  if(grouping === 'daily') return { key:date, label:formatDate(date), start:date, end:date, sortKey:date };
+  if(grouping === 'weekly'){
+    const start = startOfWeekIso(date); const end = endOfWeekIso(date);
+    return { key:start, label:weekLabel(start), start, end, sortKey:start };
+  }
+  if(grouping === 'yearly') return { key:y, label:String(y), start:`${y}-01-01`, end:`${y}-12-31`, sortKey:`${y}-01-01` };
+  return { key:`${y}-${m}`, label:isoMonthLabel(`${y}-${m}`), start:`${y}-${m}-01`, end:`${y}-${m}-31`, sortKey:`${y}-${m}-01` };
+}
+function buildCashflowChartData(){
+  const grouping = APP.state.dashboardChart?.grouping || 'monthly';
+  const start = APP.state.mainFilters.startDate || '';
+  const end = APP.state.mainFilters.endDate || '';
+  const rows = [...APP.state.mainTransactions]
+    .filter(x => !start || x.date >= start)
+    .filter(x => !end || x.date <= end)
+    .sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const map = new Map();
+  for(const tx of rows){
+    const meta = chartBucketMeta(grouping, tx.date);
+    if(!map.has(meta.key)) map.set(meta.key, { ...meta, pendapatan:0, pengeluaran:0, saldoBersih:0, count:0, rows:[] });
+    const item = map.get(meta.key);
+    const amount = Number(tx.amount||0);
+    if(tx.type === 'PENDAPATAN') item.pendapatan += amount;
+    else item.pengeluaran += amount;
+    item.saldoBersih = item.pendapatan - item.pengeluaran;
+    item.count += 1;
+    item.rows.push(tx);
+  }
+  const buckets = [...map.values()].sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+  const maxVal = Math.max(1, ...buckets.flatMap(x=>[Number(x.pendapatan||0), Number(x.pengeluaran||0), Math.abs(Number(x.saldoBersih||0))]));
+  if(!APP.state.dashboardChart.selectedKey && buckets.length) APP.state.dashboardChart.selectedKey = buckets[buckets.length-1].key;
+  if(APP.state.dashboardChart.selectedKey && !buckets.some(x=>x.key===APP.state.dashboardChart.selectedKey)) APP.state.dashboardChart.selectedKey = buckets[0]?.key || '';
+  const selected = buckets.find(x=>x.key===APP.state.dashboardChart.selectedKey) || null;
+  return { grouping, start, end, buckets, maxVal, selected };
+}
+function cashflowBars(value, maxVal, tone, title=''){
+  const pct = Math.max(3, Math.round((Math.abs(Number(value||0)) / Math.max(1, Number(maxVal||1))) * 100));
+  return `<div class="flex items-end gap-1 h-28"><div class="cash-bar ${tone}" title="${escapeHtml(title)}" style="height:${pct}%"></div></div>`;
+}
+function cashflowChartSection(){
+  const chart = buildCashflowChartData();
+  return `
+    <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+      <div class="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div><h3 class="text-lg font-bold">Grafik Arus Kas</h3><p class="text-sm text-slate-500 dark:text-slate-400">Klik kelompok batang untuk melihat tabel detail transaksi.</p></div>
+        <div class="flex flex-wrap gap-2">
+          ${[['daily','Harian'],['weekly','Mingguan'],['monthly','Bulanan'],['yearly','Tahunan']].map(([key,label])=>`<button data-cashflow-grouping="${key}" data-active="${chart.grouping===key}" class="type-btn rounded-2xl border px-4 py-2 text-sm font-semibold">${label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">Periode grafik: ${escapeHtml(formatRangeLabel(chart.start, chart.end))} · Menampilkan Pendapatan, Pengeluaran, dan Netto dari transaksi utama.</div>
+      <div class="mt-4 overflow-x-auto pb-2">
+        <div class="flex min-w-max items-end gap-3">
+          ${chart.buckets.map(item=>`<button data-cashflow-bucket="${item.key}" class="cashflow-bucket ${chart.selected?.key===item.key?'is-selected':''}"><div class="cashflow-bars">${cashflowBars(item.pendapatan, chart.maxVal, 'bar-in', `Pendapatan Rp ${rupiah(item.pendapatan)}`)}${cashflowBars(item.pengeluaran, chart.maxVal, 'bar-out', `Pengeluaran Rp ${rupiah(item.pengeluaran)}`)}${cashflowBars(item.saldoBersih, chart.maxVal, item.saldoBersih>=0?'bar-net-plus':'bar-net-minus', `Netto Rp ${rupiah(item.saldoBersih)}`)}</div><div class="mt-2 text-center"><div class="text-xs font-semibold">${escapeHtml(item.label)}</div><div class="text-[11px] text-slate-500 dark:text-slate-400">${item.count} trx · Netto Rp ${rupiah(item.saldoBersih)}</div></div></button>`).join('') || '<div class="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">Belum ada data transaksi utama pada periode ini.</div>'}
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400"><span class="inline-flex items-center gap-2"><span class="legend-dot legend-in"></span>Pendapatan</span><span class="inline-flex items-center gap-2"><span class="legend-dot legend-out"></span>Pengeluaran</span><span class="inline-flex items-center gap-2"><span class="legend-dot legend-net"></span>Netto</span></div>
+      ${chart.selected ? `<div class="mt-6"><div class="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between"><div><h4 class="text-base font-bold">Detail ${escapeHtml(chart.selected.label)}</h4><p class="text-sm text-slate-500 dark:text-slate-400">Periode ${formatDate(chart.selected.start)} s.d. ${formatDate(chart.selected.end)}</p></div><div class="grid grid-cols-1 gap-2 sm:grid-cols-3">${card('Pendapatan', `Rp ${rupiah(chart.selected.pendapatan)}`, `${chart.selected.rows.filter(x=>x.type==='PENDAPATAN').length} transaksi`, 'text-emerald-600')}${card('Pengeluaran', `Rp ${rupiah(chart.selected.pengeluaran)}`, `${chart.selected.rows.filter(x=>x.type==='PENGELUARAN').length} transaksi`, 'text-rose-600')}${card('Netto', `Rp ${rupiah(chart.selected.saldoBersih)}`, `${chart.selected.count} transaksi`, chart.selected.saldoBersih>=0?'text-blue-600':'text-amber-600')}</div></div><div class="table-wrap"><table class="min-w-full text-sm"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal</th><th class="px-3 py-2 text-left">Jenis</th><th class="px-3 py-2 text-left">Kategori</th><th class="px-3 py-2 text-right">Nominal</th><th class="px-3 py-2 text-left">Keterangan</th></tr></thead><tbody>${chart.selected.rows.slice().sort((a,b)=>`${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`)).map(tx=>`<tr class="border-b"><td class="px-3 py-2 whitespace-nowrap">${formatDateTime(tx.date, tx.time)}</td><td class="px-3 py-2"><span class="badge ${tx.type==='PENDAPATAN'?'badge-emerald':'badge-rose'}">${tx.type}</span></td><td class="px-3 py-2">${escapeHtml((tx.categoryPathNames||[]).join(' > ') || '-')}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(tx.amount)}</td><td class="px-3 py-2">${escapeHtml(tx.notes||'-')}</td></tr>`).join('') || '<tr><td colspan="5" class="px-3 py-8 text-center text-slate-500">Tidak ada detail.</td></tr>'}</tbody></table></div></div>` : ''}
+    </section>`;
+}
 function emptyState(text){ return `<div class="rounded-3xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">${text}</div>`; }
+
+function isMobileViewport(){ return window.matchMedia('(max-width: 1023.98px)').matches; }
+function closeMobileNav(){
+  APP.state.mobileNavOpen = false;
+  const sidebar = document.getElementById('appSidebar');
+  const overlay = document.getElementById('mobileNavOverlay');
+  const toggle = document.getElementById('mobileNavToggle');
+  if(sidebar) sidebar.classList.remove('is-open');
+  if(overlay){ overlay.hidden = true; overlay.classList.remove('is-open'); }
+  if(toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+function openMobileNav(){
+  APP.state.mobileNavOpen = true;
+  const sidebar = document.getElementById('appSidebar');
+  const overlay = document.getElementById('mobileNavOverlay');
+  const toggle = document.getElementById('mobileNavToggle');
+  if(sidebar) sidebar.classList.add('is-open');
+  if(overlay){ overlay.hidden = false; overlay.classList.add('is-open'); }
+  if(toggle) toggle.setAttribute('aria-expanded', 'true');
+}
+function syncMobileNavUi(){
+  if(!isMobileViewport()) return closeMobileNav();
+  if(APP.state.mobileNavOpen) openMobileNav();
+  else closeMobileNav();
+}
 
 function renderNav(){
   const nav = document.getElementById('navMenu');
   nav.innerHTML = APP.navItems.map(item => `<button data-page="${item.key}" data-active="${item.key===APP.state.currentPage}" class="nav-btn flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${item.key===APP.state.currentPage ? '' : 'border-transparent'}"><span>${item.icon}</span><span>${item.label}</span></button>`).join('');
-  nav.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click',()=>{ APP.state.currentPage = btn.dataset.page; render(); }));
+  nav.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click',()=>{ APP.state.currentPage = btn.dataset.page; if(isMobileViewport()) closeMobileNav(); render(); }));
 }
 function dashboardPage(){
   const main = getFilteredMainTransactions();
   const moduleAuto = aggregateModuleReport();
-  const pendapatan = main.filter(x=>x.type==='PENDAPATAN').reduce((s,x)=>s+Number(x.amount||0),0);
-  const pengeluaran = main.filter(x=>x.type==='PENGELUARAN').reduce((s,x)=>s+Number(x.amount||0),0);
-  const saldoUtama = pendapatan - pengeluaran;
-  const reserve = typeof reserveSummaryByFund === 'function' ? reserveSummaryByFund() : { total:{balance:0}, funds:{} };
-  const piutangPerBase = (moduleAuto.rows || []).reduce((acc,row)=>{
-    const key = row.baseId || '__NOBASE__';
-    if(!acc[key]) acc[key] = { baseId:key, baseName:row.baseName || 'Tanpa Base', receivable:0, actors:0 };
-    acc[key].receivable += Number(row.receivable || 0);
-    if(Number(row.receivable || 0) > 0) acc[key].actors += 1;
-    return acc;
-  }, {});
-  const piutangRows = Object.values(piutangPerBase).filter(x=>x.receivable>0).sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
-  const totalPiutang = piutangRows.reduce((s,x)=>s+Number(x.receivable||0),0);
-  const saldoAktual = saldoUtama + Number(reserve.total?.balance || 0) + totalPiutang;
+  const balanceInfo = buildDashboardBalanceInfo();
+  const opening = balanceInfo.opening;
+  const ending = balanceInfo.ending;
+  const piutangRows = ending.receivable.perBase || [];
+  const totalPiutang = Number(ending.receivable.total || 0);
   const autoBagiHasil = Number(moduleAuto.grand.actorShare||0) + Number(moduleAuto.grand.baseShare||0) + Number(moduleAuto.grand.ownerShare||0) + Number(moduleAuto.grand.partnerShare||0);
   const filteredCount = main.length;
   return `
   <div class="space-y-4">
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div><h2 class="text-xl font-bold">Dashboard</h2><p class="text-sm text-slate-500 dark:text-slate-400">Ringkasan transaksi utama, dana cadangan, dan piutang base.</p></div>
+        <div><h2 class="text-xl font-bold">Dashboard</h2><p class="text-sm text-slate-500 dark:text-slate-400">Ringkasan transaksi utama, dana cadangan, piutang base, dan arus kas.</p></div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800/80"><div><span class="font-semibold">Technical:</span> ${escapeHtml(getConfig().partnerName)}</div><div><span class="font-semibold">System:</span> ${escapeHtml(getConfig().ownerName)}</div></div>
       </div>
     </section>
 
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
-      <div class="mb-4"><h3 class="text-lg font-bold">Filter Dashboard</h3><p class="text-sm text-slate-500 dark:text-slate-400">Filter angka di dashboard.</p></div>
+      <div class="mb-4"><h3 class="text-lg font-bold">Filter Dashboard</h3><p class="text-sm text-slate-500 dark:text-slate-400">Tanggal dipakai untuk posisi kas periodik dan grafik arus kas. Filter jenis dan pencarian tetap mempengaruhi daftar transaksi terfilter.</p></div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
         <input id="dashboardMainFilterStart" type="date" value="${APP.state.mainFilters.startDate}" class="rounded-2xl border px-3 py-2">
         <input id="dashboardMainFilterEnd" type="date" value="${APP.state.mainFilters.endDate}" class="rounded-2xl border px-3 py-2">
@@ -227,20 +411,28 @@ function dashboardPage(){
       </div>
       <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span class="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">${filteredCount} transaksi utama sesuai filter</span>
+        <span class="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">Posisi kas: ${escapeHtml(formatRangeLabel(balanceInfo.start, balanceInfo.end))}</span>
         ${(APP.state.mainFilters.startDate || APP.state.mainFilters.endDate || APP.state.mainFilters.type !== 'ALL' || APP.state.mainFilters.search) ? '<button id="dashboardClearMainFilters" class="rounded-full border px-3 py-1 font-semibold text-slate-700 dark:text-slate-200">Reset Filter</button>' : ''}
       </div>
     </section>
 
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
-      <div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-lg font-bold">Informasi Saldo</h3><p class="text-sm text-slate-500 dark:text-slate-400">Saldo Akhir = Saldo Utama + Zakat + Infaq + Penyusutan + Piutang.</p></div></div>
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-lg font-bold">Informasi Saldo Periodik</h3><p class="text-sm text-slate-500 dark:text-slate-400">Posisi kas dihitung kumulatif sampai akhir periode yang dipilih, sehingga saldo pembuka dan saldo akhir bisa dibandingkan.</p></div></div>
+      <div class="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-950/50">
+        <div><span class="font-semibold">Saldo sebelum periode:</span> ${balanceInfo.start ? `setara saldo akhir ${formatDate(balanceInfo.openingEnd)}` : 'awal data'}</div>
+        <div><span class="font-semibold">Saldo akhir periode:</span> ${balanceInfo.end ? `sampai ${formatDate(balanceInfo.end)}` : 'sampai seluruh data saat ini'}</div>
+      </div>
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          ${card('Saldo Utama', `Rp ${rupiah(saldoUtama)}`, `Pendapatan Rp ${rupiah(pendapatan)} · Pengeluaran Rp ${rupiah(pengeluaran)}`, saldoUtama>=0?'text-blue-600':'text-amber-600')}
-          ${card('Zakat', `Rp ${rupiah(reserve.funds?.ZAKAT?.balance || 0)}`, `Masuk Rp ${rupiah(reserve.funds?.ZAKAT?.credit || 0)} · Keluar Rp ${rupiah(reserve.funds?.ZAKAT?.debit || 0)}`, 'text-violet-600')}
-          ${card('Infaq', `Rp ${rupiah(reserve.funds?.INFAQ?.balance || 0)}`, `Masuk Rp ${rupiah(reserve.funds?.INFAQ?.credit || 0)} · Keluar Rp ${rupiah(reserve.funds?.INFAQ?.debit || 0)}`, 'text-violet-600')}
-          ${card('Penyusutan', `Rp ${rupiah(reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Masuk Rp ${rupiah(reserve.funds?.PENYUSUTAN?.credit || 0)} · Keluar Rp ${rupiah(reserve.funds?.PENYUSUTAN?.debit || 0)}`, 'text-violet-600')}
-          ${card('Total Piutang Base', `Rp ${rupiah(totalPiutang)}`, `${piutangRows.length} base masih punya piutang`, totalPiutang>0?'text-amber-600':'text-emerald-600')}
-          ${card('Saldo Akhir', `Rp ${rupiah(saldoAktual)}`, 'Saldo setelah ditambah piutang', saldoAktual>=0?'text-emerald-600':'text-rose-600')}
+          ${card('Saldo Sebelum Periode', `Rp ${rupiah(opening.saldoAkhir)}`, `Utama Rp ${rupiah(opening.saldoUtama)} · Cadangan Rp ${rupiah(opening.reserve.total?.balance || 0)} · Piutang Rp ${rupiah(opening.receivable.total || 0)}`, opening.saldoAkhir>=0?'text-blue-600':'text-amber-600')}
+          ${card('Mutasi Saldo Periode', `Rp ${rupiah(balanceInfo.delta.saldoAkhir)}`, `Pendapatan Rp ${rupiah(balanceInfo.delta.pendapatan)} · Pengeluaran Rp ${rupiah(balanceInfo.delta.pengeluaran)}`, balanceInfo.delta.saldoAkhir>=0?'text-emerald-600':'text-rose-600')}
+          ${card('Saldo Akhir Periode', `Rp ${rupiah(ending.saldoAkhir)}`, 'Saldo Utama + Dana Cadangan + Piutang', ending.saldoAkhir>=0?'text-emerald-600':'text-rose-600')}
+          ${card('Saldo Utama', `Rp ${rupiah(ending.saldoUtama)}`, `Sebelum periode Rp ${rupiah(opening.saldoUtama)} · Mutasi Rp ${rupiah(balanceInfo.delta.saldoUtama)}`, ending.saldoUtama>=0?'text-blue-600':'text-amber-600')}
+          ${card('Dana Cadangan', `Rp ${rupiah(ending.reserve.total?.balance || 0)}`, `Sebelum periode Rp ${rupiah(opening.reserve.total?.balance || 0)} · Mutasi Rp ${rupiah(balanceInfo.delta.reserve)}`, 'text-violet-600')}
+          ${card('Total Piutang Base', `Rp ${rupiah(totalPiutang)}`, `Sebelum periode Rp ${rupiah(opening.receivable.total || 0)} · Selisih Rp ${rupiah(balanceInfo.delta.piutang)}`, totalPiutang>0?'text-amber-600':'text-emerald-600')}
+          ${card('Zakat', `Rp ${rupiah(ending.reserve.funds?.ZAKAT?.balance || 0)}`, `Saldo awal Rp ${rupiah(opening.reserve.funds?.ZAKAT?.balance || 0)}`, 'text-violet-600')}
+          ${card('Infaq', `Rp ${rupiah(ending.reserve.funds?.INFAQ?.balance || 0)}`, `Saldo awal Rp ${rupiah(opening.reserve.funds?.INFAQ?.balance || 0)}`, 'text-violet-600')}
+          ${card('Penyusutan', `Rp ${rupiah(ending.reserve.funds?.PENYUSUTAN?.balance || 0)}`, `Saldo awal Rp ${rupiah(opening.reserve.funds?.PENYUSUTAN?.balance || 0)}`, 'text-violet-600')}
         </div>
         <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50">
           <h4 class="text-base font-bold">Rincian Piutang per Base</h4>
@@ -250,6 +442,8 @@ function dashboardPage(){
         </div>
       </div>
     </section>
+
+    ${cashflowChartSection()}
 
     <section class="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
@@ -278,13 +472,32 @@ function bindPersistentUiEvents(){
       render();
     });
   }
+  const mobileToggle = document.getElementById('mobileNavToggle');
+  if(mobileToggle && !mobileToggle.dataset.boundMobileNav){
+    mobileToggle.dataset.boundMobileNav = '1';
+    mobileToggle.addEventListener('click', ()=>{
+      if(APP.state.mobileNavOpen) closeMobileNav();
+      else openMobileNav();
+    });
+  }
+  const overlay = document.getElementById('mobileNavOverlay');
+  if(overlay && !overlay.dataset.boundMobileNav){
+    overlay.dataset.boundMobileNav = '1';
+    overlay.addEventListener('click', ()=> closeMobileNav());
+  }
+  if(!window.__wifiMobileNavResizeBound){
+    window.__wifiMobileNavResizeBound = true;
+    window.addEventListener('resize', ()=> syncMobileNavUi());
+  }
 }
 function bindCoreEvents(){
   document.getElementById('dashboardMainFilterStart')?.addEventListener('change', e=>{ APP.state.mainFilters.startDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterEnd')?.addEventListener('change', e=>{ APP.state.mainFilters.endDate=e.target.value; render(); });
   document.getElementById('dashboardMainFilterType')?.addEventListener('change', e=>{ APP.state.mainFilters.type=e.target.value; render(); });
   document.getElementById('dashboardMainFilterSearch')?.addEventListener('input', e=>{ APP.state.mainFilters.search=e.target.value; scheduleRender({ preserveInputId:'dashboardMainFilterSearch', preserveCursor:true }); });
-  document.getElementById('dashboardClearMainFilters')?.addEventListener('click', ()=>{ APP.state.mainFilters = { startDate:'', endDate:'', type:'ALL', search:'' }; render(); });
+  document.getElementById('dashboardClearMainFilters')?.addEventListener('click', ()=>{ APP.state.mainFilters = { startDate:'', endDate:'', type:'ALL', search:'' }; APP.state.dashboardChart.selectedKey=''; render(); });
+  document.querySelectorAll('[data-cashflow-grouping]').forEach(btn => btn.addEventListener('click', ()=>{ APP.state.dashboardChart.grouping = btn.dataset.cashflowGrouping || 'monthly'; APP.state.dashboardChart.selectedKey=''; render(); }));
+  document.querySelectorAll('[data-cashflow-bucket]').forEach(btn => btn.addEventListener('click', ()=>{ APP.state.dashboardChart.selectedKey = btn.dataset.cashflowBucket || ''; render(); }));
 }
 function updateClock(){ const el = document.getElementById('clockBadge'); if(el) el.textContent = `${nowParts().display} WIB`; }
 
@@ -311,7 +524,7 @@ function scheduleRender(options={}){
   }, options.delay ?? 180);
 }
 function render(){
-  applyTheme(APP.state.theme); renderNav();
+  applyTheme(APP.state.theme); renderNav(); syncMobileNavUi();
   const root = document.getElementById('pageContent');
   if(APP.state.currentPage==='dashboard') root.innerHTML = dashboardPage();
   if(APP.state.currentPage==='main') root.innerHTML = mainTransactionsPage();
@@ -321,6 +534,7 @@ function render(){
   if(APP.state.currentPage==='assets') root.innerHTML = assetsPage();
   if(APP.state.currentPage==='debts') root.innerHTML = debtsPage();
   if(APP.state.currentPage==='settings') root.innerHTML = settingsPage();
-  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); updateClock();
+  if(APP.state.currentPage==='ipregister') root.innerHTML = ipRegisterPage();
+  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); bindIpRegisterEvents(); updateClock();
 }
 window.addEventListener('DOMContentLoaded', async ()=>{ await DB.open(); await seedIfNeeded(); await loadState(); bindPersistentUiEvents(); render(); updateClock(); setInterval(updateClock, 1000); });
