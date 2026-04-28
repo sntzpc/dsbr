@@ -4,6 +4,8 @@ window.APP_CONFIG = {
   DEFAULT_THEME: 'light',
   POLLING_MS: 15000,
   OPERATOR_POLLING_MS: 10000,
+  API_TIMEOUT_MS: 30000,
+  POLLING_PAUSE_AFTER_EDIT_MS: 120000,
   STORAGE_KEY: 'barberbook.session.v1',
   THEME_KEY: 'barberbook.theme.v1'
 };

@@ -27,6 +27,14 @@ function parsePayload_(e, method) {
       } catch (err) {}
     }
   }
+  Object.keys(payload || {}).forEach(function(k) {
+    if (typeof payload[k] === 'string') {
+      var txt = payload[k].trim();
+      if ((txt.charAt(0) === '{' && txt.charAt(txt.length - 1) === '}') || (txt.charAt(0) === '[' && txt.charAt(txt.length - 1) === ']')) {
+        try { payload[k] = JSON.parse(txt); } catch (err) {}
+      }
+    }
+  });
   return payload || {};
 }
 

@@ -2,7 +2,7 @@
   const U = window.Utils;
   const C = window.CONSTANTS;
   const App = {
-    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], page:'dashboard', polling:null, selectedSlot:null },
+    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false },
     nav:{
       ADMIN:[['dashboard','🏠','Dashboard'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
       OPERATOR:[['dashboard','🏠','Dashboard'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
@@ -49,7 +49,7 @@
     },
     async logout(){
       try{ if(this.state.token) await this.api('logout'); }catch(e){}
-      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],page:'dashboard',polling:null,selectedSlot:null}; this.showAuth();
+      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false}; this.showAuth();
     },
     showAuth(){ U.$('#auth-screen').classList.remove('hidden'); U.$('#app-shell').classList.add('hidden'); },
     showApp(){
@@ -63,12 +63,59 @@
       U.$('#side-nav').innerHTML = nav.map(([id,ic,label])=>`<button class="nav-btn ${this.state.page===id?'active':''}" data-page="${id}"><span>${ic}</span>${label}</button>`).join('');
       U.$$('#side-nav .nav-btn').forEach(b=>b.onclick=()=>this.go(b.dataset.page));
     },
-    go(page){ this.state.page=page; U.$('#sidebar').classList.remove('open'); this.renderNav(); this.render(); },
+    go(page){ this.state.page=page; this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.$('#sidebar').classList.remove('open'); this.renderNav(); this.render(); },
     applyTheme(theme){ document.documentElement.dataset.theme=theme; localStorage.setItem(APP_CONFIG.THEME_KEY,theme); const icon=theme==='dark'?'🌙':'☀️'; U.$('#theme-toggle').textContent=icon; U.$('#auth-theme-btn').textContent=icon; },
     toggleTheme(){ this.applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'); },
-    startPolling(){ clearInterval(this.state.polling); const ms=this.state.user?.role==='OPERATOR'?APP_CONFIG.OPERATOR_POLLING_MS:APP_CONFIG.POLLING_MS; this.state.polling=setInterval(()=>this.silentRefresh(),ms); },
+    startPolling(){
+      clearInterval(this.state.polling);
+      const ms=this.state.user?.role==='OPERATOR'?APP_CONFIG.OPERATOR_POLLING_MS:APP_CONFIG.POLLING_MS;
+      this.state.polling=setInterval(()=>this.silentRefresh(),ms);
+    },
     async refresh(){ try{ this.loading(true,'Mengambil data terbaru...'); await this.loadBaseData(); await this.loadPageData(); this.render(); }catch(err){U.toast('Refresh gagal',err.message,'error')}finally{this.loading(false)} },
-    async silentRefresh(){ try{ await this.loadBaseData(true); await this.loadPageData(true); this.render(false); }catch(e){ console.warn(e.message); } },
+    async silentRefresh(){
+      if(!this.state.user || this.state.refreshBusy || this.state.isSaving) return;
+      if(Date.now() < (this.state.pollingPausedUntil||0)) return;
+      this.state.refreshBusy=true;
+      try{
+        await this.loadBaseData(true);
+        await this.loadPageData(true);
+        if(this.canSilentRender()) this.render(false);
+        else this.updateTopbarOnly();
+      }catch(e){ console.warn(e.message); }
+      finally{ this.state.refreshBusy=false; }
+    },
+    canSilentRender(){
+      if(this.isUserEditing()) return false;
+      const role=this.state.user?.role;
+      const page=this.state.page;
+      const safePages={
+        ADMIN:['dashboard','bookings'],
+        OPERATOR:['dashboard','myQueue','history','notifications'],
+        CUSTOMER:['dashboard','queue','history','notifications']
+      };
+      return !!(safePages[role]||[]).includes(page);
+    },
+    isUserEditing(){
+      const active=document.activeElement;
+      const editing=active && (['INPUT','SELECT','TEXTAREA'].includes(active.tagName) || active.isContentEditable);
+      const modalRoot=U.$("#modal-root");
+      const modalOpen=modalRoot && !modalRoot.classList.contains("hidden");
+      const recentEdit=(Date.now()-(this.state.lastUserEditAt||0)) < (APP_CONFIG.POLLING_PAUSE_AFTER_EDIT_MS||120000);
+      return !!(editing || modalOpen || recentEdit);
+    },
+    pausePolling(ms){
+      const until=Date.now()+(ms||APP_CONFIG.POLLING_PAUSE_AFTER_EDIT_MS||120000);
+      this.state.pollingPausedUntil=Math.max(this.state.pollingPausedUntil||0, until);
+    },
+    markUserEditing(){
+      this.state.lastUserEditAt=Date.now();
+      this.pausePolling();
+    },
+    updateTopbarOnly(){
+      const unread=(this.state.notifications||[]).filter(n=>String(n.read_status).toLowerCase()!=='true').length;
+      const badge=U.$("#notif-badge"); if(badge) badge.textContent=unread;
+      const shop=U.$("#sidebar-shop-name"); if(shop) shop.textContent=this.state.settings.barbershop_name||"BarberBook";
+    },
     async loadBaseData(silent=false){
       const tasks=[this.api('getSettings'),this.api('listOperators',{active:true}),this.api('listServices',{active:true}),this.api('listNotifications',{unread_only:false})];
       const [set,ops,sv,nt]=await Promise.all(tasks);
@@ -175,6 +222,10 @@
     bindContentEvents(){
       U.$$('[data-go]').forEach(b=>b.onclick=()=>this.go(b.dataset.go));
       U.$$('#content [data-action]').forEach(b=>b.onclick=()=>this.handleAction(b.dataset.action,b.dataset.id,b));
+      U.$$('#content form').forEach(f=>{
+        f.addEventListener('input',()=>this.markUserEditing(),{passive:true});
+        f.addEventListener('change',()=>this.markUserEditing(),{passive:true});
+      });
       const bf=U.$('#booking-form'); if(bf){ U.$('#btn-check-availability').onclick=()=>this.checkAvailability(); bf.onsubmit=async e=>{e.preventDefault(); await this.createBooking(U.serialize(bf));}; }
       const ff=U.$('#btn-filter-bookings'); if(ff) ff.onclick=()=>this.filterBookings();
       const of=U.$('#operator-form'); if(of) of.onsubmit=async e=>{e.preventDefault(); await this.saveOperator(U.serialize(of));};
@@ -204,9 +255,9 @@
       U.$('#payment-form').onsubmit=async e=>{e.preventDefault(); const data=U.serialize(e.target); data.booking_id=id; U.closeModal(); await this.runBookingAction('createPayment',data);};
     },
     async filterBookings(){ try{ this.loading(true); const r=await this.api('listBookings',{date:U.$('#filter-booking-date').value,status:U.$('#filter-status').value,operator_id:U.$('#filter-operator').value}); this.state.bookings=r.bookings||[]; this.render(false); }catch(err){U.toast('Filter gagal',err.message,'error')}finally{this.loading(false)} },
-    async saveOperator(data){ try{ this.loading(true); const r=await this.api('saveOperator',data); U.toast('Operator disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.loading(false)} },
-    async saveService(data){ try{ this.loading(true); const r=await this.api('saveService',data); U.toast('Layanan disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.loading(false)} },
-    async saveSettings(data){ try{ this.loading(true); const r=await this.api('saveSettings',{settings:data}); U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.loading(false)} },
+    async saveOperator(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveOperator',data); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Operator disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
+    async saveService(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveService',data); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Layanan disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
+    async saveSettings(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveSettings',{settings:data}); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async markNotif(id){ try{ await this.api('markNotificationRead',{notification_id:id}); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')} },
     async loadReports(){
       try{ this.loading(true); const date_from=U.$('#report-from').value, date_to=U.$('#report-to').value; const [b,r,o]=await Promise.all([this.api('getReportBookings',{date_from,date_to}),this.api('getReportRevenue',{date_from,date_to}),this.api('getReportOperators',{date_from,date_to})]); const bars=this.bars(r.by_date||{}); U.$('#report-output').innerHTML=`<div class="grid grid-4">${this.stat('Total Booking',b.summary.total,'Periode')}${this.stat('Selesai',b.summary.finished,'Transaksi')}${this.stat('Revenue',U.rupiah(r.total_revenue),'Selesai')}${this.stat('Unpaid',U.rupiah(b.summary.unpaid_amount),'Belum lunas')}</div><div class="grid grid-2"><div class="card"><h3>Revenue per Tanggal</h3>${bars}</div><div class="card"><h3>Performa Operator</h3><div class="table-wrap"><table><thead><tr><th>Operator</th><th>Pelanggan</th><th>Revenue</th><th>Durasi Rata-rata</th></tr></thead><tbody>${(o.operators||[]).map(x=>`<tr><td>${U.esc(x.operator_name)}</td><td>${x.total_customer}</td><td>${U.rupiah(x.total_revenue)}</td><td>${x.avg_duration_min} menit</td></tr>`).join('')||'<tr><td colspan="4">Belum ada data.</td></tr>'}</tbody></table></div></div></div><div class="card">${this.todayBookingsTable(b.bookings||[])}</div>`; this.state.bookings=b.bookings||[]; this.bindContentEvents(); }catch(err){U.toast('Report gagal',err.message,'error')}finally{this.loading(false)}
