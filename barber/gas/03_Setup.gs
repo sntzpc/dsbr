@@ -45,11 +45,11 @@ function seedDefaultSettings_() {
   const defaults = [
     ['barbershop_name', 'Karya Barber', 'Nama usaha barbershop'],
     ['address', '-', 'Alamat barbershop'],
-    ['contact_phone', '-', 'Nomor kontak/WhatsApp'],
-    ['open_time', '08:00', 'Jam buka'],
-    ['close_time', '21:00', 'Jam tutup'],
+    ['contact_phone', '81249810026', 'Nomor kontak/WhatsApp'],
+    ['open_time', '11:00', 'Jam buka'],
+    ['close_time', '22:00', 'Jam tutup'],
     ['operational_days', '1,2,3,4,5,6,0', 'Hari operasional: 0=Minggu, 1=Senin, dst'],
-    ['chair_count', '3', 'Jumlah kursi/barber chair'],
+    ['chair_count', '1', 'Jumlah kursi/barber chair'],
     ['capacity_per_chair', '15', 'Kapasitas harian per kursi'],
     ['default_service_duration_min', '30', 'Durasi standar layanan'],
     ['max_booking_per_customer_per_day', '1', 'Maksimal booking pelanggan per hari'],
@@ -69,16 +69,16 @@ function seedDefaultServices_() {
   if (existing.length > 0) return;
   const now = now_();
   appendObject_('Services', {
-    service_id: makeId_('SV'), service_name: 'Pangkas Dewasa', duration_min: 30,
-    price: 25000, active: true, description: 'Layanan pangkas rambut dewasa', created_at: now, updated_at: now
+    service_id: makeId_('SV'), service_name: 'Pangkas Dewasa', duration_min: 45,
+    price: 40000, active: true, description: 'Layanan pangkas rambut dewasa', created_at: now, updated_at: now
   });
   appendObject_('Services', {
-    service_id: makeId_('SV'), service_name: 'Pangkas Anak', duration_min: 25,
-    price: 20000, active: true, description: 'Layanan pangkas rambut anak', created_at: now, updated_at: now
+    service_id: makeId_('SV'), service_name: 'Pangkas Anak', duration_min: 30,
+    price: 30000, active: true, description: 'Layanan pangkas rambut anak', created_at: now, updated_at: now
   });
   appendObject_('Services', {
-    service_id: makeId_('SV'), service_name: 'Pangkas + Keramas', duration_min: 45,
-    price: 35000, active: true, description: 'Pangkas rambut dan keramas', created_at: now, updated_at: now
+    service_id: makeId_('SV'), service_name: 'Pangkas + Keramas', duration_min: 60,
+    price: 50000, active: true, description: 'Pangkas rambut dan keramas', created_at: now, updated_at: now
   });
 }
 

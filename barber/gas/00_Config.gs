@@ -9,7 +9,7 @@ const APP_CONFIG = {
   SPREADSHEET_ID: '1_qIwbP2PsD-oOX9551SbIP7c3dHRCmxxNzm6iJtisyc', // Opsional. Isi dengan ID Google Sheet jika Apps Script standalone.
   TIMEZONE: 'Asia/Jakarta',
   SESSION_DAYS: 30,
-  DEFAULT_ADMIN_PHONE: '08123456789',
+  DEFAULT_ADMIN_PHONE: '8123456789',
   DEFAULT_ADMIN_PASSWORD: 'admin123',
   DEFAULT_ADMIN_NAME: 'Administrator',
   API_OK: 'ok',
