@@ -1,0 +1,9 @@
+{
+  "name": "BarberBook",
+  "short_name": "BarberBook",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f0e8",
+  "theme_color": "#c88a39",
+  "icons": []
+}

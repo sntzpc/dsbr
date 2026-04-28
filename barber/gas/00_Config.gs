@@ -1,0 +1,54 @@
+/**
+ * 00_Config.gs
+ * Konfigurasi utama backend GAS Barbershop.
+ * Isi SPREADSHEET_ID jika project Apps Script tidak dibuat langsung dari Google Sheet.
+ */
+const APP_CONFIG = {
+  APP_NAME: 'Barbershop Booking System',
+  VERSION: '1.0.0',
+  SPREADSHEET_ID: '1_qIwbP2PsD-oOX9551SbIP7c3dHRCmxxNzm6iJtisyc', // Opsional. Isi dengan ID Google Sheet jika Apps Script standalone.
+  TIMEZONE: 'Asia/Jakarta',
+  SESSION_DAYS: 30,
+  DEFAULT_ADMIN_PHONE: '08123456789',
+  DEFAULT_ADMIN_PASSWORD: 'admin123',
+  DEFAULT_ADMIN_NAME: 'Administrator',
+  API_OK: 'ok',
+  API_ERROR: 'error'
+};
+
+const BOOKING_STATUS = {
+  BOOKED: 'BOOKED',
+  CHECKED_IN: 'CHECKED_IN',
+  CALLED: 'CALLED',
+  IN_SERVICE: 'IN_SERVICE',
+  FINISHED: 'FINISHED',
+  CANCELLED: 'CANCELLED',
+  NO_SHOW: 'NO_SHOW'
+};
+
+const PAYMENT_STATUS = {
+  UNPAID: 'UNPAID',
+  PAID: 'PAID',
+  PARTIAL: 'PARTIAL',
+  REFUNDED: 'REFUNDED'
+};
+
+const USER_ROLES = {
+  ADMIN: 'ADMIN',
+  OPERATOR: 'OPERATOR',
+  CUSTOMER: 'CUSTOMER'
+};
+
+const ACTIVE_BOOKING_STATUSES = [
+  BOOKING_STATUS.BOOKED,
+  BOOKING_STATUS.CHECKED_IN,
+  BOOKING_STATUS.CALLED,
+  BOOKING_STATUS.IN_SERVICE,
+  BOOKING_STATUS.FINISHED
+];
+
+const WAITING_BOOKING_STATUSES = [
+  BOOKING_STATUS.BOOKED,
+  BOOKING_STATUS.CHECKED_IN,
+  BOOKING_STATUS.CALLED
+];

@@ -1,0 +1,15 @@
+window.APP_CONFIG = {
+  APP_NAME: 'BarberBook',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbwoPMzVoCiZUdVYtvptf9nLCAyEC9LGKGpUHKqsEjYRA8_4NNCZ6TMDg8fK4eCZAnOPqw/exec',
+  DEFAULT_THEME: 'light',
+  POLLING_MS: 15000,
+  OPERATOR_POLLING_MS: 10000,
+  STORAGE_KEY: 'barberbook.session.v1',
+  THEME_KEY: 'barberbook.theme.v1'
+};
+
+window.CONSTANTS = {
+  ROLES: { ADMIN: 'ADMIN', OPERATOR: 'OPERATOR', CUSTOMER: 'CUSTOMER' },
+  STATUS: ['BOOKED','CHECKED_IN','CALLED','IN_SERVICE','FINISHED','CANCELLED','NO_SHOW'],
+  PAYMENT_STATUS: ['UNPAID','PARTIAL','PAID','REFUNDED']
+};
