@@ -76,6 +76,55 @@
         r.readAsDataURL(file);
       });
     },
+    async fileToQrisDataUrl(file){
+      if(!file) {
+        throw new Error('File QRIS belum dipilih.');
+      }
+
+      if(!/^image\/(png|jpe?g|webp)$/i.test(file.type || '')) {
+        throw new Error('Format QRIS harus PNG, JPG, JPEG, atau WebP.');
+      }
+
+      if(file.size > 5 * 1024 * 1024) {
+        throw new Error('File QRIS terlalu besar. Maksimal file awal 5 MB.');
+      }
+
+      const originalDataUrl = await this.fileToDataUrl(file);
+
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Gagal membaca gambar QRIS.'));
+        image.src = originalDataUrl;
+      });
+
+      const maxSide = 900;
+      let w = img.width || maxSide;
+      let h = img.height || maxSide;
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+
+      w = Math.max(240, Math.round(w * scale));
+      h = Math.max(240, Math.round(h * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      let quality = 0.82;
+      let out = canvas.toDataURL('image/jpeg', quality);
+
+      while(out.length > 650000 && quality > 0.45) {
+        quality -= 0.08;
+        out = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      return out;
+    },
     csvDownload(filename, rows){
       if(!rows || !rows.length){ this.toast('Data kosong','Tidak ada data untuk diexport.','error'); return; }
       const normalized = rows.map(row => {

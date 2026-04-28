@@ -74,6 +74,10 @@ function routeAction_(action, payload, e) {
     createTripayPayment: createTripayPayment_,
     checkTripayPaymentStatus: checkTripayPaymentStatus_,
     saveQrisStatic: saveQrisStatic_,
+    beginQrisUpload: beginQrisUpload_,
+    appendQrisUploadChunk: appendQrisUploadChunk_,
+    finishQrisUpload: finishQrisUpload_,
+    checkAppPermissions: checkAppPermissions_,
 
     listNotifications: listNotifications_,
     markNotificationRead: markNotificationRead_,

@@ -311,15 +311,37 @@
     async saveService(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveService',data); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Layanan disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async uploadQrisStatic(form){
       try{
-        const file=form.elements.qris_file.files[0];
-        if(!file){U.toast('File kosong','Pilih file QRIS terlebih dahulu.','error');return;}
-        this.loading(true,'Upload QRIS...');
-        const base64_data=await U.fileToDataUrl(file);
-        const r=await this.api('saveQrisStatic',{base64_data,filename:file.name});
-        U.toast('QRIS disimpan',r.message,'success');
+        const file = form.elements.qris_file.files[0];
+
+        if(!file) {
+          U.toast('File kosong', 'Pilih file QRIS terlebih dahulu.', 'error');
+          return;
+        }
+
+        this.loading(true, 'Menyiapkan gambar QRIS...');
+
+        const base64_data = await U.fileToQrisDataUrl(file);
+
+        this.loading(true, 'Upload QRIS 0%...');
+
+        const r = await Api.uploadQrisStaticChunked({
+          token: this.state.token,
+          base64_data,
+          filename: file.name,
+          mime: 'image/jpeg',
+          onProgress: (pct) => {
+            this.loading(true, 'Upload QRIS ' + pct + '%...');
+          }
+        });
+
+        U.toast('QRIS disimpan', r.message || 'QRIS statis berhasil diupload.', 'success');
         await this.refresh();
-      }catch(err){U.toast('Upload QRIS gagal',err.message,'error')}
-      finally{this.loading(false)}
+
+      }catch(err){
+        U.toast('Upload QRIS gagal', err.message, 'error');
+      }finally{
+        this.loading(false);
+      }
     },
     async saveSettings(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveSettings',{settings:data}); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async markNotif(id){ try{ await this.api('markNotificationRead',{notification_id:id}); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')} },
