@@ -22,7 +22,11 @@ function listNotifications_(payload) {
   if (payload.unread_only === true || String(payload.unread_only) === 'true') {
     rows = rows.filter(function(n) { return !bool_(n.read_status); });
   }
-  rows.sort(function(a, b) { return String(b.created_at).localeCompare(String(a.created_at)); });
+  rows.sort(function(a, b) {
+    var bd = parseDateTimeValue_(b.created_at);
+    var ad = parseDateTimeValue_(a.created_at);
+    return (bd ? bd.getTime() : 0) - (ad ? ad.getTime() : 0);
+  });
   return { status: APP_CONFIG.API_OK, notifications: rows.map(cleanRow_) };
 }
 

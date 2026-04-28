@@ -36,8 +36,8 @@ function listPayments_(payload) {
   const user = requireRole_(payload, [USER_ROLES.ADMIN, USER_ROLES.OPERATOR]);
   let rows = getRowsAsObjects_('Payments');
   if (payload.booking_id) rows = rows.filter(function(p) { return String(p.booking_id) === String(payload.booking_id); });
-  if (payload.date_from) rows = rows.filter(function(p) { return toDateOnly_(p.payment_date) >= toDateOnly_(payload.date_from); });
-  if (payload.date_to) rows = rows.filter(function(p) { return toDateOnly_(p.payment_date) <= toDateOnly_(payload.date_to); });
+  if (payload.date_from) rows = rows.filter(function(p) { return compareDate_(p.payment_date, payload.date_from) >= 0; });
+  if (payload.date_to) rows = rows.filter(function(p) { return compareDate_(p.payment_date, payload.date_to) <= 0; });
 
   if (user.role === USER_ROLES.OPERATOR) {
     const myBookingIds = getRowsAsObjects_('Bookings')

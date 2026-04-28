@@ -40,7 +40,7 @@ function loginUser_(payload, e) {
     user_id: user.user_id,
     token: token,
     created_at: now_(),
-    expires_at: Utilities.formatDate(expires, APP_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+    expires_at: formatDateTime_(expires),
     active: true,
     last_seen_at: now_(),
     user_agent: e && e.parameter && e.parameter.ua ? e.parameter.ua : ''
@@ -76,8 +76,8 @@ function requireAuth_(payload) {
   const session = findOneByField_('Sessions', 'token', token);
   if (!session || !bool_(session.active)) throw new Error('Session tidak aktif. Silakan login ulang.');
 
-  const expires = new Date(String(session.expires_at).replace(' ', 'T'));
-  if (expires.getTime() < new Date().getTime()) {
+  const expires = parseDateTimeValue_(session.expires_at);
+  if (!expires || expires.getTime() < new Date().getTime()) {
     updateRowById_('Sessions', 'session_id', session.session_id, { active: false, last_seen_at: now_() });
     throw new Error('Session expired. Silakan login ulang.');
   }

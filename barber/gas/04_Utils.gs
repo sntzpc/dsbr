@@ -1,6 +1,10 @@
 /**
  * 04_Utils.gs
- * Helper umum database, response, waktu, validasi, dan ID.
+ * Helper umum database, response, waktu WIB, validasi, dan ID.
+ * Format database/report:
+ * - Tanggal: dd/MM/yyyy
+ * - Jam: HH:mm:ss
+ * - DateTime: dd/MM/yyyy HH:mm:ss
  */
 function getSpreadsheet_() {
   if (APP_CONFIG.SPREADSHEET_ID) return SpreadsheetApp.openById(APP_CONFIG.SPREADSHEET_ID);
@@ -49,11 +53,66 @@ function apiResponse_(data, callback) {
 }
 
 function now_() {
-  return Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+  return Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
 }
 
 function today_() {
-  return Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  return Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'dd/MM/yyyy');
+}
+
+function formatDateOnly_(dateObj) {
+  return Utilities.formatDate(dateObj, APP_CONFIG.TIMEZONE, 'dd/MM/yyyy');
+}
+
+function formatTimeOnly_(dateObj) {
+  return Utilities.formatDate(dateObj, APP_CONFIG.TIMEZONE, 'HH:mm:ss');
+}
+
+function formatDateTime_(dateObj) {
+  return Utilities.formatDate(dateObj, APP_CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+}
+
+function parseDateValue_(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  var s = String(value).trim();
+  if (!s) return null;
+  s = s.split('T')[0].split(' ')[0];
+
+  var m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function parseDateTimeValue_(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  var s = String(value).trim();
+  if (!s) return null;
+
+  var parts = s.split(/[ T]/);
+  var d = parseDateValue_(parts[0]);
+  if (!d) return null;
+  var time = (parts[1] || '00:00:00').split(':');
+  d.setHours(number_(time[0], 0), number_(time[1], 0), number_(time[2], 0), 0);
+  return d;
+}
+
+function toDateKey_(value) {
+  var d = parseDateValue_(value);
+  return d ? Utilities.formatDate(d, APP_CONFIG.TIMEZONE, 'yyyyMMdd') : '';
+}
+
+function compareDate_(a, b) {
+  var ak = toDateKey_(a);
+  var bk = toDateKey_(b);
+  if (!ak || !bk) return 0;
+  return ak === bk ? 0 : (ak > bk ? 1 : -1);
 }
 
 function makeId_(prefix) {
@@ -195,24 +254,23 @@ function maskName_(name) {
 
 function minutesBetween_(startStr, endStr) {
   if (!startStr || !endStr) return 0;
-  const start = new Date(String(startStr).replace(' ', 'T'));
-  const end = new Date(String(endStr).replace(' ', 'T'));
+  var start = parseDateTimeValue_(startStr);
+  var end = parseDateTimeValue_(endStr);
+  if (!start || !end) return 0;
   const diff = Math.round((end.getTime() - start.getTime()) / 60000);
   return diff > 0 ? diff : 0;
 }
 
 function toDateOnly_(value) {
-  if (!value) return '';
-  if (Object.prototype.toString.call(value) === '[object Date]') {
-    return Utilities.formatDate(value, APP_CONFIG.TIMEZONE, 'yyyy-MM-dd');
-  }
-  return String(value).substring(0, 10);
+  var d = parseDateValue_(value);
+  return d ? formatDateOnly_(d) : '';
 }
 
 function toTimeOnly_(value) {
   if (!value) return '';
-  if (Object.prototype.toString.call(value) === '[object Date]') {
-    return Utilities.formatDate(value, APP_CONFIG.TIMEZONE, 'HH:mm');
-  }
-  return String(value).substring(0, 5);
+  if (Object.prototype.toString.call(value) === '[object Date]') return formatTimeOnly_(value);
+  var s = String(value).trim();
+  var m = s.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+  if (!m) return '';
+  return ('0' + Number(m[1])).slice(-2) + ':' + ('0' + Number(m[2])).slice(-2) + ':' + ('0' + Number(m[3] || 0)).slice(-2);
 }

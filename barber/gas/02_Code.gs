@@ -31,6 +31,7 @@ function routeAction_(action, payload, e) {
   const routes = {
     ping: ping_,
     setupDatabase: setupDatabase_,
+    migrateDateTimeFormat: migrateDateTimeFormat_,
 
     login: loginUser_,
     logout: logoutUser_,

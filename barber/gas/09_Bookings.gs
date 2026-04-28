@@ -113,8 +113,8 @@ function listBookings_(payload) {
     const d = toDateOnly_(payload.date || payload.booking_date);
     rows = rows.filter(function(r) { return toDateOnly_(r.booking_date) === d; });
   }
-  if (payload.date_from) rows = rows.filter(function(r) { return toDateOnly_(r.booking_date) >= toDateOnly_(payload.date_from); });
-  if (payload.date_to) rows = rows.filter(function(r) { return toDateOnly_(r.booking_date) <= toDateOnly_(payload.date_to); });
+  if (payload.date_from) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_from) >= 0; });
+  if (payload.date_to) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_to) <= 0; });
   if (payload.status) rows = rows.filter(function(r) { return String(r.status) === String(payload.status); });
   if (payload.operator_id) rows = rows.filter(function(r) { return String(r.operator_id) === String(payload.operator_id); });
 
@@ -164,7 +164,8 @@ function getBookingsByDate_(date) {
 }
 
 function validateOperationalDate_(date) {
-  const d = new Date(date + 'T00:00:00');
+  const d = parseDateValue_(date);
+  if (!d) throw new Error('Format tanggal tidak valid. Gunakan dd/mm/yyyy.');
   const day = d.getDay();
   const operationalDays = String(getSettingValue_('operational_days', '1,2,3,4,5,6,0')).split(',').map(function(x) { return String(x).trim(); });
   if (operationalDays.indexOf(String(day)) === -1) throw new Error('Tanggal tersebut bukan hari operasional.');
@@ -233,8 +234,8 @@ function getNextQueueNo_(date) {
 }
 
 function buildSlots_(date, operators, bookings, durationMin) {
-  const open = String(getSettingValue_('open_time', '08:00'));
-  const close = String(getSettingValue_('close_time', '21:00'));
+  const open = String(getSettingValue_('open_time', '08:00:00'));
+  const close = String(getSettingValue_('close_time', '21:00:00'));
   const slots = [];
   operators.forEach(function(op) {
     let startMin = timeToMinutes_(op.work_start || open);
@@ -265,7 +266,7 @@ function timeToMinutes_(hhmm) {
 function minutesToTime_(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+  return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2) + ':00';
 }
 
 function assertBookingAccess_(user, bookingId) {

@@ -31,8 +31,8 @@ function getDashboardCustomer_(payload) {
 function getReportBookings_(payload) {
   requireRole_(payload, USER_ROLES.ADMIN);
   let rows = getRowsAsObjects_('Bookings');
-  if (payload.date_from) rows = rows.filter(function(r) { return toDateOnly_(r.booking_date) >= toDateOnly_(payload.date_from); });
-  if (payload.date_to) rows = rows.filter(function(r) { return toDateOnly_(r.booking_date) <= toDateOnly_(payload.date_to); });
+  if (payload.date_from) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_from) >= 0; });
+  if (payload.date_to) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_to) <= 0; });
   if (payload.operator_id) rows = rows.filter(function(r) { return String(r.operator_id) === String(payload.operator_id); });
   if (payload.status) rows = rows.filter(function(r) { return String(r.status) === String(payload.status); });
   return { status: APP_CONFIG.API_OK, summary: summarizeBookings_(rows), bookings: rows.map(cleanRow_) };
@@ -41,8 +41,8 @@ function getReportBookings_(payload) {
 function getReportRevenue_(payload) {
   requireRole_(payload, USER_ROLES.ADMIN);
   let bookings = getRowsAsObjects_('Bookings').filter(function(b) { return String(b.status) === BOOKING_STATUS.FINISHED; });
-  if (payload.date_from) bookings = bookings.filter(function(r) { return toDateOnly_(r.booking_date) >= toDateOnly_(payload.date_from); });
-  if (payload.date_to) bookings = bookings.filter(function(r) { return toDateOnly_(r.booking_date) <= toDateOnly_(payload.date_to); });
+  if (payload.date_from) bookings = bookings.filter(function(r) { return compareDate_(r.booking_date, payload.date_from) >= 0; });
+  if (payload.date_to) bookings = bookings.filter(function(r) { return compareDate_(r.booking_date, payload.date_to) <= 0; });
 
   const byDate = {};
   const byService = {};
@@ -67,8 +67,8 @@ function getReportRevenue_(payload) {
 function getReportOperators_(payload) {
   requireRole_(payload, USER_ROLES.ADMIN);
   let bookings = getRowsAsObjects_('Bookings').filter(function(b) { return String(b.status) === BOOKING_STATUS.FINISHED; });
-  if (payload.date_from) bookings = bookings.filter(function(r) { return toDateOnly_(r.booking_date) >= toDateOnly_(payload.date_from); });
-  if (payload.date_to) bookings = bookings.filter(function(r) { return toDateOnly_(r.booking_date) <= toDateOnly_(payload.date_to); });
+  if (payload.date_from) bookings = bookings.filter(function(r) { return compareDate_(r.booking_date, payload.date_from) >= 0; });
+  if (payload.date_to) bookings = bookings.filter(function(r) { return compareDate_(r.booking_date, payload.date_to) <= 0; });
 
   const map = {};
   bookings.forEach(function(b) {

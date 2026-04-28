@@ -20,6 +20,7 @@ function saveSettings_(payload) {
 }
 
 function upsertSetting_(key, value, description, updatedBy) {
+  if (key === 'open_time' || key === 'close_time') value = toTimeOnly_(value);
   const existing = findOneByField_('Settings', 'key', key);
   const row = {
     key: key,
@@ -40,5 +41,20 @@ function getSettingValue_(key, fallback) {
 function cleanRow_(row) {
   const copy = Object.assign({}, row);
   delete copy._row;
+  Object.keys(copy).forEach(function(k) {
+    var v = copy[k];
+    if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+      if (/_date$|^date$|booking_date|payment_date/i.test(k)) copy[k] = formatDateOnly_(v);
+      else if (/_at$|timestamp|last_login|expires_at/i.test(k)) copy[k] = formatDateTime_(v);
+      else copy[k] = formatDateTime_(v);
+    } else if (/slot_time|work_start|work_end|open_time|close_time/i.test(k) && v !== '') {
+      copy[k] = toTimeOnly_(v);
+    } else if (/_date$|^date$|booking_date|payment_date/i.test(k) && v !== '') {
+      copy[k] = toDateOnly_(v);
+    } else if (/_at$|timestamp|last_login|expires_at/i.test(k) && v !== '') {
+      var d = parseDateTimeValue_(v) || parseDateValue_(v);
+      if (d) copy[k] = formatDateTime_(d);
+    }
+  });
   return copy;
 }
