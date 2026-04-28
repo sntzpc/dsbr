@@ -57,7 +57,19 @@ function seedDefaultSettings_() {
     ['queue_mode', 'SLOT_AND_QUEUE', 'Mode booking: SLOT_ONLY, QUEUE_ONLY, SLOT_AND_QUEUE'],
     ['polling_seconds_customer', '15', 'Auto refresh pelanggan'],
     ['polling_seconds_operator', '10', 'Auto refresh operator'],
-    ['polling_seconds_admin', '20', 'Auto refresh admin']
+    ['polling_seconds_admin', '20', 'Auto refresh admin'],
+    ['website_url', '', 'URL website untuk pengajuan Tripay'],
+    ['payment_gateway_enabled', 'false', 'Aktifkan payment gateway'],
+    ['tripay_mode', 'sandbox', 'Mode Tripay: sandbox/production'],
+    ['tripay_merchant_code', '', 'Merchant Code Tripay'],
+    ['tripay_api_key', '', 'API Key Tripay'],
+    ['tripay_private_key', '', 'Private Key Tripay'],
+    ['tripay_default_method', 'QRIS', 'Channel default Tripay, contoh QRIS/BRIVA/BCAVA'],
+    ['tripay_return_url', '', 'URL kembali setelah pelanggan membayar'],
+    ['tripay_callback_url', '', 'URL callback Tripay: GAS /exec'],
+    ['tripay_whitelist_ip_note', 'Google Apps Script memakai IP dinamis Google; jika Tripay wajib whitelist IP statis, gunakan backend/VPS proxy.', 'Catatan whitelist IP'],
+    ['qris_static_file_id', '', 'File ID QRIS statis di Drive'],
+    ['qris_static_url', '', 'URL publik QRIS statis']
   ];
   defaults.forEach(function(row) {
     upsertSetting_(row[0], row[1], row[2], 'SYSTEM');

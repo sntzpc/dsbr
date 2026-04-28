@@ -1,14 +1,18 @@
 (function(){
   /**
-   * API client khusus Google Apps Script Web App.
-   *
-   * Perbaikan v1.1:
-   * 1. Request JSONP dibuat lebih tahan di Chrome Mobile dengan retry otomatis.
-   * 2. Jika format parameter `payload` gagal, sistem mencoba format parameter datar.
-   * 3. Script tag dipasang ke <head>, diberi timeout bertahap, dan dibersihkan total.
-   * 4. Pesan error dibuat lebih jelas tanpa langsung memutus pengalaman user.
+   * API client Google Apps Script Web App.
+   * v1.2:
+   * - Mendukung beberapa endpoint: script.google.com /exec + alternatif googleusercontent.
+   * - Retry otomatis per endpoint dan mode parameter payload/flat.
+   * - Default tetap JSONP agar aman di GitHub Pages + Chrome Mobile.
    */
   const Api = {
+    getEndpoints(){
+      const main = window.APP_CONFIG?.GAS_URL || '';
+      const extras = Array.isArray(window.APP_CONFIG?.GAS_URL_ALTERNATES) ? window.APP_CONFIG.GAS_URL_ALTERNATES : [];
+      return [main].concat(extras).map(x=>String(x||'').trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+    },
+
     request(action, data = {}, options = {}) {
       const payload = Object.assign({}, data, { action });
       const timeout = options.timeout || window.APP_CONFIG?.API_TIMEOUT_MS || 30000;
@@ -16,25 +20,24 @@
     },
 
     async jsonpWithRetry(payload, timeout) {
-      const attempts = [
-        { mode: 'payload', timeout },
-        { mode: 'flat', timeout: Math.max(timeout, 35000) },
-        { mode: 'payload', timeout: Math.max(timeout, 45000), cacheBuster: true }
-      ];
+      const endpoints = this.getEndpoints();
+      if(!endpoints.length) throw new Error('GAS_URL belum diisi di js/config.js');
+      const attempts = [];
+      endpoints.forEach(endpoint => {
+        attempts.push({ endpoint, mode: 'payload', timeout });
+        attempts.push({ endpoint, mode: 'flat', timeout: Math.max(timeout, 35000) });
+        attempts.push({ endpoint, mode: 'payload', timeout: Math.max(timeout, 45000), cacheBuster: true });
+      });
 
       let lastErr = null;
       for (const attempt of attempts) {
-        try {
-          return await this.jsonp(payload, attempt);
-        } catch (err) {
-          lastErr = err;
-          await this.delay(450);
-        }
+        try { return await this.jsonp(payload, attempt); }
+        catch (err) { lastErr = err; await this.delay(450); }
       }
 
       throw new Error(
         (lastErr && lastErr.message ? lastErr.message : 'Gagal terhubung ke GAS.') +
-        ' Jika terjadi di Chrome Mobile, refresh halaman sekali atau pastikan akses Web App = Anyone.'
+        ' Chrome Mobile: pastikan Web App akses Anyone, deployment /exec terbaru, atau isi GAS_URL_ALTERNATES dengan URL googleusercontent jika tersedia.'
       );
     },
 
@@ -46,7 +49,7 @@
 
         const timer = setTimeout(() => {
           cleanup();
-          reject(new Error('Request timeout. Periksa koneksi internet atau deployment GAS.'));
+          reject(new Error('Request timeout. Periksa koneksi internet, deployment GAS, atau endpoint alternatif.'));
         }, attempt.timeout || 30000);
 
         function cleanup(){
@@ -69,12 +72,8 @@
         };
 
         let url;
-        try {
-          url = new URL(window.APP_CONFIG.GAS_URL);
-        } catch (err) {
-          cleanup();
-          return reject(new Error('URL GAS tidak valid di js/config.js'));
-        }
+        try { url = new URL(attempt.endpoint || window.APP_CONFIG.GAS_URL); }
+        catch (err) { cleanup(); return reject(new Error('URL GAS/alternatif tidak valid di js/config.js')); }
 
         url.searchParams.set('callback', cb);
         url.searchParams.set('_', String(Date.now()) + Math.random().toString(36).slice(2));
@@ -93,7 +92,7 @@
         script.referrerPolicy = 'no-referrer-when-downgrade';
         script.onerror = () => {
           cleanup();
-          reject(new Error('Gagal terhubung ke GAS. Cek URL deployment, akses Web App, dan koneksi browser.'));
+          reject(new Error('Gagal terhubung ke endpoint GAS: ' + (attempt.endpoint || '')));
         };
         script.src = url.toString();
         (document.head || document.documentElement).appendChild(script);

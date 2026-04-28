@@ -103,3 +103,14 @@ function sanitizeUser_(user) {
   delete copy._row;
   return copy;
 }
+
+
+function getUserByToken_(token) {
+  if (!token) return null;
+  const session = findOneByField_('Sessions', 'token', token);
+  if (!session || !bool_(session.active)) return null;
+  const expires = parseDateTimeValue_(session.expires_at);
+  if (!expires || expires.getTime() < new Date().getTime()) return null;
+  const user = findOneByField_('Users', 'user_id', session.user_id);
+  return user && bool_(user.active) ? user : null;
+}

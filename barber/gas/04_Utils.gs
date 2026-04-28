@@ -19,9 +19,11 @@ function parsePayload_(e, method) {
     const raw = e.postData.contents;
     try {
       payload = JSON.parse(raw);
+      payload._raw_post = raw;
     } catch (err) {
       payload = e.parameter || {};
       payload.raw = raw;
+      payload._raw_post = raw;
     }
   } else if (e && e.parameter) {
     payload = Object.assign({}, e.parameter);
@@ -32,7 +34,7 @@ function parsePayload_(e, method) {
     }
   }
   Object.keys(payload || {}).forEach(function(k) {
-    if (typeof payload[k] === 'string') {
+    if (k !== '_raw_post' && typeof payload[k] === 'string') {
       var txt = payload[k].trim();
       if ((txt.charAt(0) === '{' && txt.charAt(txt.length - 1) === '}') || (txt.charAt(0) === '[' && txt.charAt(txt.length - 1) === ']')) {
         try { payload[k] = JSON.parse(txt); } catch (err) {}
@@ -273,4 +275,24 @@ function toTimeOnly_(value) {
   var m = s.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
   if (!m) return '';
   return ('0' + Number(m[1])).slice(-2) + ':' + ('0' + Number(m[2])).slice(-2) + ':' + ('0' + Number(m[3] || 0)).slice(-2);
+}
+
+
+function hmacSha256Hex_(message, key) {
+  const sig = Utilities.computeHmacSha256Signature(String(message || ''), String(key || ''), Utilities.Charset.UTF_8);
+  return sig.map(function(b) {
+    const v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+function safeJson_(obj) {
+  try { return JSON.stringify(obj || {}); } catch (err) { return String(obj || ''); }
+}
+
+function maskSecret_(v) {
+  const s = String(v || '');
+  if (!s) return '';
+  if (s.length <= 8) return '********';
+  return s.substring(0, 4) + '********' + s.substring(s.length - 4);
 }

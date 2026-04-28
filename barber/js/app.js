@@ -169,13 +169,21 @@
       U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="card" style="margin-top:16px">${this.operatorActionList(this.state.bookings)}</div>`;
     },
     customerDashboard(){
-      this.setTitle('Dashboard Pelanggan','Pantau booking dan antrian secara live'); const b=this.state.dashboard?.active_booking;
-      const bookingHtml=b?`<div class="card soft"><h3>Booking Aktif Anda</h3><div class="grid grid-4">${this.stat('Nomor Antrian',b.queue_no,'')}${this.stat('Status',U.statusLabel(b.status),'')}${this.stat('Operator',b.operator_name||'-','')}${this.stat('Jam',U.formatTime(b.slot_time)||'-','')}</div><div class="action-row" style="margin-top:16px"><button class="success-btn" data-action="checkIn" data-id="${b.booking_id}">Check-in</button><button class="danger-btn" data-action="cancelBooking" data-id="${b.booking_id}">Batalkan</button></div></div>`:`<div class="card empty-state"><b>Belum ada booking aktif hari ini</b><p>Silakan buat booking baru sesuai jadwal yang tersedia.</p><button class="primary-btn" data-go="booking">Buat Booking</button></div>`;
+      this.setTitle('Dashboard Pelanggan','Pantau booking, pembayaran, dan antrian secara live'); const b=this.state.dashboard?.active_booking;
+      const bookingHtml=b?`<div class="card soft"><h3>Booking Aktif Anda</h3><div class="grid grid-4">${this.stat('Nomor Antrian',b.queue_no,'')}${this.stat('Status',U.statusLabel(b.status),'')}${this.stat('Operator',b.operator_name||'-','')}${this.stat('Jam',U.formatTime(b.slot_time)||'-','')}</div><div class="action-row" style="margin-top:16px"><button class="success-btn" data-action="checkIn" data-id="${b.booking_id}">Check-in</button><button class="danger-btn" data-action="cancelBooking" data-id="${b.booking_id}">Batalkan</button></div></div>${this.paymentInfoCard(b)}`:`<div class="card empty-state"><b>Belum ada booking aktif hari ini</b><p>Silakan buat booking baru sesuai jadwal yang tersedia.</p><button class="primary-btn" data-go="booking">Buat Booking</button></div>`;
       U.$('#content').innerHTML=`${bookingHtml}<div class="card" style="margin-top:16px">${this.queuePreview()}</div>`;
     },
     queuePreview(){
       const q=this.state.queue||this.state.dashboard?.queue||{}; const cur=q.current||[];
       return `<div class="section-title" style="margin-top:0"><h2>Antrian Live</h2><span class="badge">Next: ${q.next_queue||'-'}</span></div><div class="grid grid-3">${this.stat('Menunggu',q.waiting_count||0,'Antrian belum selesai')}${this.stat('Selesai',q.finished_count||0,'Hari ini')}${this.stat('Sedang Dilayani',cur.length,'Kursi aktif')}</div><div class="section-title"><h2>Sedang Dilayani</h2></div><div class="queue-list">${cur.length?cur.map(x=>`<div class="queue-item"><div class="queue-no">${U.esc(x.queue_no)}</div><div class="queue-main"><b>${U.esc(x.customer_initial)} · ${U.esc(x.service_name)}</b><span>${U.esc(x.operator_name)} · Kursi ${U.esc(x.chair_no||'-')} · ${x.running_duration_min||0} menit</span></div></div>`).join(''):'<div class="empty-state"><b>Belum ada yang sedang dilayani</b><p>Data akan refresh otomatis.</p></div>'}</div>`;
+    },
+    paymentInfoCard(b){
+      const st=String(b.payment_status||'UNPAID').toUpperCase();
+      if(st==='PAID') return `<div class="card" style="margin-top:16px"><h3>Pembayaran</h3><p>Status: <b>${U.paymentLabel(st)}</b></p></div>`;
+      const s=this.state.settings||{};
+      const qris=s.qris_static_url?`<div style="margin-top:12px"><b>QRIS Statis</b><p style="color:var(--muted)">Silakan scan QRIS, lalu tunjukkan bukti pembayaran ke Operator.</p><img src="${U.esc(s.qris_static_url)}" alt="QRIS Statis" style="max-width:260px;width:100%;border-radius:16px;border:1px solid var(--border);background:white;padding:8px"></div>`:'';
+      const tripay=String(s.payment_gateway_enabled).toLowerCase()==='true'?`<button class="primary-btn" data-action="tripayCustomer" data-id="${U.esc(b.booking_id)}" data-price="${U.esc(b.price||0)}">Bayar Online Tripay</button>`:'';
+      return `<div class="card" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>Pembayaran</h2><span class="badge">${U.paymentLabel(st)}</span></div><p>Total tagihan: <b>${U.rupiah(b.price||0)}</b></p><div class="action-row">${tripay}</div>${qris}</div>`;
     },
     customerBooking(){
       this.setTitle('Booking Baru','Pilih tanggal, layanan, operator, dan slot waktu');
@@ -203,8 +211,32 @@
       U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><h3>Form Layanan</h3><form id="service-form"><input type="hidden" name="service_id"><label>Nama Layanan<input name="service_name" required></label><label>Durasi Menit<input type="number" name="duration_min" value="30" required></label><label>Harga<input type="number" name="price" value="25000" required></label><label>Deskripsi<textarea name="description"></textarea></label><button class="primary-btn full">Simpan Layanan</button></form></div><div class="card"><h3>Daftar Layanan</h3><div class="queue-list">${this.state.services.map(s=>`<div class="queue-item"><div class="queue-no">${U.esc(s.duration_min)}</div><div class="queue-main"><b>${U.esc(s.service_name)}</b><span>${U.rupiah(s.price)} · ${U.esc(s.description||'-')}</span></div><button class="ghost-btn mini" data-edit-service='${JSON.stringify(s).replace(/'/g,'&#39;')}'>Edit</button></div>`).join('')||'<div class="empty-state"><b>Belum ada layanan</b></div>'}</div></div></div>`;
     },
     adminSettings(){
-      this.setTitle('Pengaturan Barbershop','Profil, jam operasional, dan kapasitas'); const s=this.state.settings;
-      U.$('#content').innerHTML=`<div class="card"><form id="settings-form" class="form-grid"><label>Nama Barbershop<input name="barbershop_name" value="${U.esc(s.barbershop_name||'BarberBook')}"></label><label>No WhatsApp<input name="whatsapp" value="${U.esc(s.whatsapp||'')}"></label><label>Jam Buka<input type="time" step="1" name="open_time" value="${U.esc(U.timeInput(s.open_time)||'08:00')}"></label><label>Jam Tutup<input type="time" step="1" name="close_time" value="${U.esc(U.timeInput(s.close_time)||'21:00')}"></label><label>Jumlah Kursi<input type="number" name="chair_count" value="${U.esc(s.chair_count||3)}"></label><label>Kapasitas per Kursi<input type="number" name="capacity_per_chair" value="${U.esc(s.capacity_per_chair||15)}"></label><label>Durasi Default Menit<input type="number" name="default_service_duration_min" value="${U.esc(s.default_service_duration_min||30)}"></label><label>Maks Booking/Pelanggan/Hari<input type="number" name="max_booking_per_customer_per_day" value="${U.esc(s.max_booking_per_customer_per_day||1)}"></label><label class="span-2">Alamat<textarea name="address">${U.esc(s.address||'')}</textarea></label><label class="span-2">Hari Operasional<input name="operational_days" value="${U.esc(s.operational_days||'1,2,3,4,5,6,0')}"><small>0=Minggu, 1=Senin, dst. Contoh setiap hari: 1,2,3,4,5,6,0</small></label><button class="primary-btn span-2">Simpan Pengaturan</button></form></div>`;
+      this.setTitle('Pengaturan Barbershop','Profil, jam operasional, payment gateway, dan QRIS statis'); const s=this.state.settings;
+      const qris=s.qris_static_url?`<div class="span-2"><small>QRIS aktif:</small><br><img src="${U.esc(s.qris_static_url)}" alt="QRIS Statis" style="max-width:220px;width:100%;border-radius:16px;border:1px solid var(--border);background:white;padding:8px;margin-top:8px"></div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
+      U.$('#content').innerHTML=`<div class="card"><form id="settings-form" class="form-grid">
+        <label>Nama Barbershop<input name="barbershop_name" value="${U.esc(s.barbershop_name||'BarberBook')}"></label>
+        <label>No WhatsApp<input name="whatsapp" value="${U.esc(s.whatsapp||s.contact_phone||'')}"></label>
+        <label>Jam Buka<input type="time" step="1" name="open_time" value="${U.esc(U.timeInput(s.open_time)||'08:00')}"></label>
+        <label>Jam Tutup<input type="time" step="1" name="close_time" value="${U.esc(U.timeInput(s.close_time)||'21:00')}"></label>
+        <label>Jumlah Kursi<input type="number" name="chair_count" value="${U.esc(s.chair_count||3)}"></label>
+        <label>Kapasitas per Kursi<input type="number" name="capacity_per_chair" value="${U.esc(s.capacity_per_chair||15)}"></label>
+        <label>Durasi Default Menit<input type="number" name="default_service_duration_min" value="${U.esc(s.default_service_duration_min||30)}"></label>
+        <label>Maks Booking/Pelanggan/Hari<input type="number" name="max_booking_per_customer_per_day" value="${U.esc(s.max_booking_per_customer_per_day||1)}"></label>
+        <label class="span-2">Alamat<textarea name="address">${U.esc(s.address||'')}</textarea></label>
+        <label class="span-2">Hari Operasional<input name="operational_days" value="${U.esc(s.operational_days||'1,2,3,4,5,6,0')}"><small>0=Minggu, 1=Senin, dst. Contoh setiap hari: 1,2,3,4,5,6,0</small></label>
+        <h3 class="span-2">Setting Website & Tripay</h3>
+        <label class="span-2">URL Website<input name="website_url" placeholder="https://domain-anda.com" value="${U.esc(s.website_url||location.origin)}"><small>URL ini dipakai untuk pengajuan merchant Tripay.</small></label>
+        <label>Aktifkan Payment Gateway<select name="payment_gateway_enabled"><option value="false" ${String(s.payment_gateway_enabled).toLowerCase()==='true'?'':'selected'}>Tidak</option><option value="true" ${String(s.payment_gateway_enabled).toLowerCase()==='true'?'selected':''}>Ya</option></select></label>
+        <label>Mode Tripay<select name="tripay_mode"><option value="sandbox" ${String(s.tripay_mode).toLowerCase()==='production'?'':'selected'}>Sandbox</option><option value="production" ${String(s.tripay_mode).toLowerCase()==='production'?'selected':''}>Production</option></select></label>
+        <label>Merchant Code<input name="tripay_merchant_code" value="${U.esc(s.tripay_merchant_code||'')}"></label>
+        <label>Default Channel<input name="tripay_default_method" value="${U.esc(s.tripay_default_method||'QRIS')}"><small>Contoh: QRIS, BRIVA, BCAVA, BNIVA.</small></label>
+        <label class="span-2">API Key Tripay<input name="tripay_api_key" autocomplete="off" value="${U.esc(s.tripay_api_key||'')}"></label>
+        <label class="span-2">Private Key Tripay<input name="tripay_private_key" autocomplete="off" value="${U.esc(s.tripay_private_key||'')}"></label>
+        <label class="span-2">URL Callback Tripay<input name="tripay_callback_url" value="${U.esc(s.tripay_callback_url||APP_CONFIG.GAS_URL)}"><small>Masukkan URL ini di dashboard Tripay sebagai URL Callback.</small></label>
+        <label class="span-2">URL Return Tripay<input name="tripay_return_url" value="${U.esc(s.tripay_return_url||location.href.split('#')[0])}"><small>Halaman tujuan setelah pelanggan membayar.</small></label>
+        <div class="span-2 card soft"><b>Whitelist IP Tripay</b><p style="color:var(--muted)">Google Apps Script memakai IP dinamis Google. Jika Tripay meminta Whitelist IP statis, gunakan backend/proxy VPS di tahap produksi. Untuk sandbox biasanya dapat diuji tanpa IP statis.</p></div>
+        <button class="primary-btn span-2">Simpan Pengaturan</button></form></div>
+        <div class="card" style="margin-top:16px"><h3>QRIS Statis</h3><p style="color:var(--muted)">Upload QRIS statis agar bisa dibuka oleh Pelanggan dan Operator.</p><form id="qris-upload-form" class="form-grid"><label class="span-2">File QRIS<input type="file" name="qris_file" accept="image/png,image/jpeg,image/webp" required></label>${qris}<button class="primary-btn span-2">Upload QRIS Statis</button></form></div>`;
     },
     adminReports(){
       this.setTitle('Report Management','Laporan booking, revenue, dan operator');
@@ -231,6 +263,7 @@
       const of=U.$('#operator-form'); if(of) of.onsubmit=async e=>{e.preventDefault(); await this.saveOperator(U.serialize(of));};
       const sf=U.$('#service-form'); if(sf) sf.onsubmit=async e=>{e.preventDefault(); await this.saveService(U.serialize(sf));};
       const st=U.$('#settings-form'); if(st) st.onsubmit=async e=>{e.preventDefault(); await this.saveSettings(U.serialize(st));};
+      const qf=U.$('#qris-upload-form'); if(qf) qf.onsubmit=async e=>{e.preventDefault(); await this.uploadQrisStatic(qf);};
       U.$$('[data-edit-operator]').forEach(b=>b.onclick=()=>{const o=JSON.parse(b.getAttribute('data-edit-operator')); const f=U.$('#operator-form'); Object.keys(o).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(o[k]):o[k])}); window.scrollTo({top:0,behavior:'smooth'});});
       U.$$('[data-edit-service]').forEach(b=>b.onclick=()=>{const s=JSON.parse(b.getAttribute('data-edit-service')); const f=U.$('#service-form'); Object.keys(s).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(s[k]):s[k])}); window.scrollTo({top:0,behavior:'smooth'});});
       U.$$('[data-export="bookings"]').forEach(b=>b.onclick=()=>U.csvDownload('booking-barbershop.csv',this.state.bookings));
@@ -247,16 +280,47 @@
       const map={call:'callCustomer',start:'startService',finish:'finishService',noshow:'markNoShow',checkIn:'checkInBooking'};
       if(action==='cancelBooking'){ const ok=await U.confirm('Batalkan Booking','Booking akan dibatalkan. Lanjutkan?'); if(!ok)return; return this.runBookingAction('cancelBooking',{booking_id:id,cancel_reason:'Dibatalkan pengguna'}); }
       if(action==='payment') return this.paymentModal(id, btn.dataset.price);
+      if(action==='tripayCustomer') return this.createTripayInvoice(id, btn.dataset.price);
       if(map[action]) return this.runBookingAction(map[action],{booking_id:id});
     },
     async runBookingAction(apiAction,payload){ try{ this.loading(true,'Memproses...'); const r=await this.api(apiAction,payload); U.toast('Berhasil',r.message||'Data diperbarui.','success'); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')}finally{this.loading(false)} },
     paymentModal(id,price){
-      U.modal('Input Pembayaran',`<form id="payment-form"><label>Nominal<input name="amount" type="number" value="${price||0}" required></label><label>Metode<select name="method"><option>CASH</option><option>QRIS</option><option>TRANSFER</option></select></label><label>Status<select name="status"><option value="PAID">Lunas</option><option value="PARTIAL">Sebagian</option></select></label><label>Catatan<textarea name="notes"></textarea></label><button class="primary-btn full">Simpan Pembayaran</button></form>`);
+      const tripayOn=String(this.state.settings.payment_gateway_enabled).toLowerCase()==='true';
+      U.modal('Input Pembayaran',`<form id="payment-form"><label>Nominal<input name="amount" type="number" value="${price||0}" required></label><label>Metode<select name="method"><option>CASH</option><option>QRIS_STATIS</option><option>TRANSFER</option></select></label><label>Status<select name="status"><option value="PAID">Lunas</option><option value="PARTIAL">Sebagian</option></select></label><label>Catatan<textarea name="notes"></textarea></label><button class="primary-btn full">Simpan Pembayaran Manual</button></form>${tripayOn?`<hr style="border:none;border-top:1px solid var(--border);margin:16px 0"><button class="warning-btn full" id="btn-create-tripay">Buat Invoice Tripay</button>`:''}`);
       U.$('#payment-form').onsubmit=async e=>{e.preventDefault(); const data=U.serialize(e.target); data.booking_id=id; U.closeModal(); await this.runBookingAction('createPayment',data);};
+      const bt=U.$('#btn-create-tripay'); if(bt) bt.onclick=()=>{U.closeModal(); this.createTripayInvoice(id,price);};
+    },
+    async createTripayInvoice(id, price){
+      try{
+        this.loading(true,'Membuat invoice Tripay...');
+        const r=await this.api('createTripayPayment',{booking_id:id,amount:price||0});
+        const url=r.checkout_url||r.payment?.checkout_url;
+        U.toast('Invoice Tripay',r.message||'Invoice berhasil dibuat.','success');
+        if(url) window.open(url,'_blank');
+        await this.refresh();
+      }catch(err){U.toast('Tripay gagal',err.message,'error')}
+      finally{this.loading(false)}
+    },
+    async checkTripayStatus(bookingId){
+      try{ this.loading(true,'Cek status Tripay...'); const r=await this.api('checkTripayPaymentStatus',{booking_id:bookingId}); U.toast('Status Tripay',r.message,'success'); await this.refresh(); }
+      catch(err){U.toast('Cek status gagal',err.message,'error')}
+      finally{this.loading(false)}
     },
     async filterBookings(){ try{ this.loading(true); const r=await this.api('listBookings',{date:U.$('#filter-booking-date').value,status:U.$('#filter-status').value,operator_id:U.$('#filter-operator').value}); this.state.bookings=r.bookings||[]; this.render(false); }catch(err){U.toast('Filter gagal',err.message,'error')}finally{this.loading(false)} },
     async saveOperator(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveOperator',data); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Operator disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async saveService(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveService',data); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Layanan disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
+    async uploadQrisStatic(form){
+      try{
+        const file=form.elements.qris_file.files[0];
+        if(!file){U.toast('File kosong','Pilih file QRIS terlebih dahulu.','error');return;}
+        this.loading(true,'Upload QRIS...');
+        const base64_data=await U.fileToDataUrl(file);
+        const r=await this.api('saveQrisStatic',{base64_data,filename:file.name});
+        U.toast('QRIS disimpan',r.message,'success');
+        await this.refresh();
+      }catch(err){U.toast('Upload QRIS gagal',err.message,'error')}
+      finally{this.loading(false)}
+    },
     async saveSettings(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveSettings',{settings:data}); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async markNotif(id){ try{ await this.api('markNotificationRead',{notification_id:id}); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')} },
     async loadReports(){

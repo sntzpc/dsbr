@@ -4,9 +4,23 @@
  */
 function getSettings_(payload) {
   const rows = getRowsAsObjects_('Settings');
+  let user = null;
+  try { if (payload && payload.token) user = getUserByToken_(payload.token); } catch (err) {}
+  const isAdmin = user && user.role === USER_ROLES.ADMIN;
   const settings = {};
   rows.forEach(function(r) { settings[r.key] = r.value; });
-  return { status: APP_CONFIG.API_OK, settings: settings, rows: rows.map(cleanRow_) };
+
+  if (!isAdmin) {
+    ['tripay_api_key', 'tripay_private_key', 'tripay_merchant_code'].forEach(function(k) { delete settings[k]; });
+    return { status: APP_CONFIG.API_OK, settings: settings, rows: [] };
+  }
+
+  const safeRows = rows.map(function(r) {
+    const c = cleanRow_(r);
+    if (c.key === 'tripay_api_key' || c.key === 'tripay_private_key') c.value_masked = maskSecret_(c.value);
+    return c;
+  });
+  return { status: APP_CONFIG.API_OK, settings: settings, rows: safeRows };
 }
 
 function saveSettings_(payload) {

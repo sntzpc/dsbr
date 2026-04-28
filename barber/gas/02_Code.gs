@@ -14,6 +14,10 @@ function handleRequest_(e, method) {
   try {
     const payload = parsePayload_(e, method);
     const action = String(payload.action || '').trim();
+    if (!action && method === 'POST' && (payload.merchant_ref || payload.reference || payload.status)) {
+      const result = processTripayCallback_(payload, e);
+      return apiResponse_(result, payload.callback);
+    }
     if (!action) throw new Error('Missing action');
 
     const result = routeAction_(action, payload, e);
@@ -66,6 +70,10 @@ function routeAction_(action, payload, e) {
 
     createPayment: createPayment_,
     listPayments: listPayments_,
+    getTripayChannels: getTripayChannels_,
+    createTripayPayment: createTripayPayment_,
+    checkTripayPaymentStatus: checkTripayPaymentStatus_,
+    saveQrisStatic: saveQrisStatic_,
 
     listNotifications: listNotifications_,
     markNotificationRead: markNotificationRead_,

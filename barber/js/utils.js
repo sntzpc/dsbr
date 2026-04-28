@@ -52,7 +52,7 @@
     initial(name){ return String(name||'U').trim().charAt(0).toUpperCase() || 'U'; },
     statusLabel(st){ return ({BOOKED:'Booking',CHECKED_IN:'Check-in',CALLED:'Dipanggil',IN_SERVICE:'Dilayani',FINISHED:'Selesai',CANCELLED:'Batal',NO_SHOW:'Tidak Hadir'}[st] || st || '-'); },
     badge(st){ return `<span class="badge ${this.esc(st)}">${this.statusLabel(st)}</span>`; },
-    paymentLabel(st){ return ({UNPAID:'Belum Bayar',PARTIAL:'Sebagian',PAID:'Lunas',REFUNDED:'Refund'}[st] || st || '-'); },
+    paymentLabel(st){ return ({UNPAID:'Belum Bayar',PARTIAL:'Sebagian',PAID:'Lunas',REFUNDED:'Refund',PENDING:'Menunggu',EXPIRED:'Expired',FAILED:'Gagal'}[st] || st || '-'); },
     toast(title, msg='', type='info'){
       const root = this.$('#toast-root');
       const el = document.createElement('div');
@@ -67,6 +67,14 @@
       new FormData(form).forEach((v,k)=> data[k]=String(v).trim());
       form.querySelectorAll('input[type="checkbox"]').forEach(i => data[i.name] = i.checked);
       return data;
+    },
+    fileToDataUrl(file){
+      return new Promise((resolve,reject)=>{
+        const r=new FileReader();
+        r.onload=()=>resolve(r.result);
+        r.onerror=()=>reject(new Error('Gagal membaca file.'));
+        r.readAsDataURL(file);
+      });
     },
     csvDownload(filename, rows){
       if(!rows || !rows.length){ this.toast('Data kosong','Tidak ada data untuk diexport.','error'); return; }

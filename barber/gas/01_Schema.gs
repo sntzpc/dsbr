@@ -31,7 +31,8 @@ const DB_SCHEMA = {
   ],
   Payments: [
     'payment_id', 'booking_id', 'payment_date', 'amount', 'method', 'status',
-    'notes', 'created_at', 'created_by'
+    'gateway', 'gateway_reference', 'merchant_ref', 'payment_channel', 'checkout_url',
+    'instructions', 'raw_payload', 'callback_payload', 'notes', 'created_at', 'created_by', 'updated_at'
   ],
   DailyCapacity: [
     'date', 'operator_id', 'operator_name', 'chair_no', 'capacity', 'active',
@@ -47,5 +48,8 @@ const DB_SCHEMA = {
   AuditLogs: [
     'log_id', 'timestamp', 'user_id', 'role', 'action', 'entity', 'entity_id',
     'old_value', 'new_value', 'notes'
+  ],
+  PaymentCallbacks: [
+    'callback_id', 'gateway', 'reference', 'merchant_ref', 'status', 'raw_payload', 'created_at', 'processed'
   ]
 };
