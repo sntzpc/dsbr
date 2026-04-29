@@ -2,7 +2,7 @@
   const U = window.Utils;
   const C = window.CONSTANTS;
   const App = {
-    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false },
+    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false },
     nav:{
       ADMIN:[['dashboard','🏠','Dashboard'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
       OPERATOR:[['dashboard','🏠','Dashboard'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
@@ -49,7 +49,7 @@
     },
     async logout(){
       try{ if(this.state.token) await this.api('logout'); }catch(e){}
-      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false}; this.showAuth();
+      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false}; this.showAuth();
     },
     showAuth(){ U.$('#auth-screen').classList.remove('hidden'); U.$('#app-shell').classList.add('hidden'); },
     showApp(){
@@ -63,22 +63,29 @@
       U.$('#side-nav').innerHTML = nav.map(([id,ic,label])=>`<button class="nav-btn ${this.state.page===id?'active':''}" data-page="${id}"><span>${ic}</span>${label}</button>`).join('');
       U.$$('#side-nav .nav-btn').forEach(b=>b.onclick=()=>this.go(b.dataset.page));
     },
-    go(page){ this.state.page=page; this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.$('#sidebar').classList.remove('open'); this.renderNav(); this.render(); },
+    go(page){
+      this.state.page=page; this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0;
+      U.$('#sidebar').classList.remove('open'); this.renderNav();
+      if(page==='history' || page==='notifications'){ this.refresh(); return; }
+      this.render();
+    },
     applyTheme(theme){ document.documentElement.dataset.theme=theme; localStorage.setItem(APP_CONFIG.THEME_KEY,theme); const icon=theme==='dark'?'🌙':'☀️'; U.$('#theme-toggle').textContent=icon; U.$('#auth-theme-btn').textContent=icon; },
     toggleTheme(){ this.applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'); },
     startPolling(){
       clearInterval(this.state.polling);
-      const ms=this.state.user?.role==='OPERATOR'?APP_CONFIG.OPERATOR_POLLING_MS:APP_CONFIG.POLLING_MS;
+      const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
+      const ms=this.state.user?.role==='OPERATOR'
+        ? (isMobile?(APP_CONFIG.MOBILE_OPERATOR_POLLING_MS||20000):APP_CONFIG.OPERATOR_POLLING_MS)
+        : (isMobile?(APP_CONFIG.MOBILE_POLLING_MS||30000):APP_CONFIG.POLLING_MS);
       this.state.polling=setInterval(()=>this.silentRefresh(),ms);
     },
-    async refresh(){ try{ this.loading(true,'Mengambil data terbaru...'); await this.loadBaseData(); await this.loadPageData(); this.render(); }catch(err){U.toast('Refresh gagal',err.message,'error')}finally{this.loading(false)} },
+    async refresh(){ try{ this.loading(true,'Mengambil data terbaru...'); await this.loadSnapshot(false); this.render(); }catch(err){ U.toast('Refresh gagal',err.message,'error'); try{ await this.loadBaseData(); await this.loadPageData(); this.render(); }catch(e){} }finally{this.loading(false)} },
     async silentRefresh(){
-      if(!this.state.user || this.state.refreshBusy || this.state.isSaving) return;
+      if(!this.state.user || this.state.refreshBusy || this.state.isSaving || document.hidden) return;
       if(Date.now() < (this.state.pollingPausedUntil||0)) return;
       this.state.refreshBusy=true;
       try{
-        await this.loadBaseData(true);
-        await this.loadPageData(true);
+        await this.loadSnapshot(true);
         if(this.canSilentRender()) this.render(false);
         else this.updateTopbarOnly();
       }catch(e){ console.warn(e.message); }
@@ -112,16 +119,32 @@
       this.pausePolling();
     },
     updateTopbarOnly(){
-      const unread=(this.state.notifications||[]).filter(n=>String(n.read_status).toLowerCase()!=='true').length;
+      const unread=this.state.unread_count!==undefined?this.state.unread_count:(this.state.notifications||[]).filter(n=>String(n.read_status).toLowerCase()!=='true').length;
       const badge=U.$("#notif-badge"); if(badge) badge.textContent=unread;
       const shop=U.$("#sidebar-shop-name"); if(shop) shop.textContent=this.state.settings.barbershop_name||"BarberBook";
+    },
+    async loadSnapshot(silent=false){
+      const role=this.state.user.role, date=U.today();
+      const includeHistory=(role==='CUSTOMER' && this.state.page==='history');
+      const snap=await this.api('getAppSnapshot',{date,page:this.state.page,include_notifications:!silent,include_history:includeHistory});
+      this.state.settings=snap.settings||{};
+      this.state.operators=snap.operators||[];
+      this.state.services=snap.services||[];
+      if(!silent || (snap.notifications||[]).length) this.state.notifications=snap.notifications||this.state.notifications||[];
+      this.state.dashboard=snap.dashboard||null;
+      this.state.queue=snap.queue||(snap.dashboard&&snap.dashboard.queue)||null;
+      this.state.bookings=snap.bookings||[];
+      U.$("#sidebar-shop-name").textContent=this.state.settings.barbershop_name||"BarberBook";
+      const unread=snap.unread_count!==undefined?snap.unread_count:(this.state.notifications||[]).filter(n=>String(n.read_status).toLowerCase()!=='true').length;
+      this.state.unread_count=unread;
+      U.$("#notif-badge").textContent=unread;
     },
     async loadBaseData(silent=false){
       const tasks=[this.api('getSettings'),this.api('listOperators',{active:true}),this.api('listServices',{active:true}),this.api('listNotifications',{unread_only:false})];
       const [set,ops,sv,nt]=await Promise.all(tasks);
       this.state.settings=set.settings||{}; this.state.operators=ops.operators||[]; this.state.services=sv.services||[]; this.state.notifications=nt.notifications||[];
       U.$('#sidebar-shop-name').textContent=this.state.settings.barbershop_name||'BarberBook';
-      const unread=this.state.notifications.filter(n=>String(n.read_status).toLowerCase()!=='true').length; U.$('#notif-badge').textContent=unread;
+      const unread=this.state.notifications.filter(n=>String(n.read_status).toLowerCase()!=='true').length; this.state.unread_count=unread; U.$('#notif-badge').textContent=unread;
     },
     async loadPageData(silent=false){
       const role=this.state.user.role, date=U.today();
@@ -186,8 +209,8 @@
       return `<div class="card" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>Pembayaran</h2><span class="badge">${U.paymentLabel(st)}</span></div><p>Total tagihan: <b>${U.rupiah(b.price||0)}</b></p><div class="action-row">${tripay}</div>${qris}</div>`;
     },
     customerBooking(){
-      this.setTitle('Booking Baru','Pilih tanggal, layanan, operator, dan slot waktu');
-      U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><form id="booking-form"><div class="form-grid"><label>Tanggal Booking<input type="date" name="booking_date" value="${U.today()}" required></label><label>Layanan<select name="service_id" required><option value="">Pilih layanan</option>${this.state.services.map(s=>`<option value="${s.service_id}">${U.esc(s.service_name)} · ${U.rupiah(s.price)} · ${s.duration_min} menit</option>`).join('')}</select></label><label class="span-2">Operator<select name="operator_id"><option value="ANY">Operator mana saja</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)} · Kursi ${U.esc(o.chair_no||'-')}</option>`).join('')}</select></label></div><button class="ghost-btn full" type="button" id="btn-check-availability">Cek Slot Tersedia</button><div id="availability-result" style="margin-top:16px"></div><button class="primary-btn full" type="submit" style="margin-top:16px">Konfirmasi Booking</button></form></div><div class="card">${this.queuePreview()}</div></div>`;
+      this.setTitle('Booking Baru','Pilih layanan, lalu klik slot jam yang tersedia');
+      U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><form id="booking-form"><div class="form-grid"><label>Tanggal Booking<input type="date" name="booking_date" value="${U.today()}" required></label><label>Layanan<select name="service_id" required><option value="">Pilih layanan</option>${this.state.services.map(s=>`<option value="${s.service_id}">${U.esc(s.service_name)} · ${U.rupiah(s.price)} · ${s.duration_min} menit</option>`).join('')}</select><small>Setelah layanan dipilih, slot otomatis ditampilkan. Pelanggan cukup klik jam yang tersedia.</small></label><label class="span-2">Operator<select name="operator_id"><option value="ANY">Operator mana saja</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)} · Kursi ${U.esc(o.chair_no||'-')}</option>`).join('')}</select></label></div><div id="availability-result" style="margin-top:16px"><div class="empty-state"><b>Pilih layanan terlebih dahulu</b><p>Slot akan digenerate otomatis berdasarkan durasi layanan, jam kerja operator, dan booking yang sudah masuk.</p></div></div><button class="primary-btn full" type="submit" style="margin-top:16px">Konfirmasi Booking</button></form></div><div class="card">${this.queuePreview()}</div></div>`;
     },
     queueLivePage(){ this.setTitle('Antrian Live','Pantau kapasitas dan status pelanggan yang sedang dilayani'); U.$('#content').innerHTML=`<div class="card">${this.queuePreview()}</div><div class="card" style="margin-top:16px">${this.queueTable()}</div>`; },
     queueTable(){ const q=(this.state.queue||this.state.dashboard?.queue||{}).queue||[]; return `<h3>Daftar Antrian Hari Ini</h3><div class="table-wrap"><table><thead><tr><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Status</th></tr></thead><tbody>${q.map(x=>`<tr><td>${x.queue_no}</td><td>${U.esc(x.customer_initial)}</td><td>${U.esc(x.service_name)}</td><td>${U.esc(x.operator_name)}</td><td>${U.esc(U.formatTime(x.slot_time))}</td><td>${U.badge(x.status)}</td></tr>`).join('')||'<tr><td colspan="6">Belum ada antrian.</td></tr>'}</tbody></table></div>`; },
@@ -246,10 +269,28 @@
       this.setTitle('Notifikasi','Pesan dan pemberitahuan aplikasi');
       U.$('#content').innerHTML=`<div class="card"><div class="notif-panel">${this.state.notifications.length?this.state.notifications.map(n=>`<div class="notif-item ${String(n.read_status).toLowerCase()==='true'?'':'unread'}"><b>${U.esc(n.title)}</b><p>${U.esc(n.message)}</p><small>${U.esc(U.dateTime(n.created_at))}</small>${String(n.read_status).toLowerCase()==='true'?'':`<div style="margin-top:8px"><button class="ghost-btn mini" data-read-notif="${n.notification_id}">Tandai dibaca</button></div>`}</div>`).join(''):'<div class="empty-state"><b>Tidak ada notifikasi</b></div>'}</div></div>`;
     },
-    async checkAvailability(){
-      const form=U.$('#booking-form'); const data=U.serialize(form); if(!data.booking_date||!data.service_id){U.toast('Lengkapi data','Tanggal dan layanan wajib dipilih.','error');return;}
-      try{ const r=await this.api('getBookingAvailability',data); this.state.availability=r; this.state.selectedSlot=null; const slots=(r.slots||[]).filter(x=>data.operator_id==='ANY'||String(x.operator_id)===String(data.operator_id)); U.$('#availability-result').innerHTML=`<div class="kpi-strip"><span class="badge">Kapasitas: ${r.capacity.effective_capacity}</span><span class="badge">Terpakai: ${r.capacity.used}</span><span class="badge">Sisa: ${r.capacity.remaining}</span></div><div class="section-title"><h2>Pilih Slot</h2></div><div class="slot-grid">${slots.map(sl=>`<button type="button" class="slot-btn" ${sl.available?'':'disabled'} data-slot="${sl.slot_time}" data-op="${sl.operator_id}"><b>${U.formatTime(sl.slot_time)}</b><span>${U.esc(sl.operator_name)} · Kursi ${U.esc(sl.chair_no||'-')}</span></button>`).join('')||'<div class="empty-state"><b>Tidak ada slot tersedia</b></div>'}</div>`; U.$$('.slot-btn').forEach(btn=>btn.onclick=()=>{U.$$('.slot-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');this.state.selectedSlot={slot_time:btn.dataset.slot,operator_id:btn.dataset.op};}); }
-      catch(err){ U.toast('Cek slot gagal',err.message,'error'); }
+    async checkAvailability(showToast=false){
+      const form=U.$('#booking-form');
+      if(!form) return;
+      const box=U.$('#availability-result');
+      const data=U.serialize(form);
+      this.state.selectedSlot=null;
+      if(!data.booking_date||!data.service_id){
+        if(box) box.innerHTML='<div class="empty-state"><b>Pilih layanan terlebih dahulu</b><p>Slot akan muncul otomatis setelah layanan dipilih.</p></div>';
+        if(showToast) U.toast('Lengkapi data','Tanggal dan layanan wajib dipilih.','error');
+        return;
+      }
+      try{
+        if(box) box.innerHTML='<div class="empty-state"><b>Memuat slot...</b><p>Mengecek ketersediaan jam dari server.</p></div>';
+        const r=await this.api('getBookingAvailability',data);
+        this.state.availability=r;
+        const slots=(r.slots||[]).filter(x=>String(data.operator_id||'ANY')==='ANY'||String(x.operator_id)===String(data.operator_id));
+        const availableCount=slots.filter(x=>x.available).length;
+        const slotHtml=slots.map(sl=>`<button type="button" class="slot-btn" ${sl.available?'':'disabled'} data-slot="${sl.slot_time}" data-op="${sl.operator_id}"><b>${U.formatTime(sl.slot_time)}</b><span>${U.esc(sl.operator_name)} · Kursi ${U.esc(sl.chair_no||'-')}</span></button>`).join('');
+        if(box) box.innerHTML=`<div class="kpi-strip"><span class="badge">Kapasitas: ${r.capacity.effective_capacity}</span><span class="badge">Terpakai: ${r.capacity.used}</span><span class="badge">Sisa: ${r.capacity.remaining}</span><span class="badge">Slot tersedia: ${availableCount}</span></div><div class="section-title"><h2>Pilih Slot</h2></div><div class="slot-grid">${slotHtml||'<div class="empty-state"><b>Tidak ada slot tersedia</b><p>Coba pilih operator lain atau tanggal lain.</p></div>'}</div>`;
+        U.$$('.slot-btn').forEach(btn=>btn.onclick=()=>{U.$$('.slot-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');this.state.selectedSlot={slot_time:btn.dataset.slot,operator_id:btn.dataset.op};});
+      }
+      catch(err){ if(box) box.innerHTML='<div class="empty-state"><b>Slot gagal dimuat</b><p>'+U.esc(err.message)+'</p></div>'; if(showToast) U.toast('Cek slot gagal',err.message,'error'); }
     },
     bindContentEvents(){
       U.$$('[data-go]').forEach(b=>b.onclick=()=>this.go(b.dataset.go));
@@ -258,7 +299,12 @@
         f.addEventListener('input',()=>this.markUserEditing(),{passive:true});
         f.addEventListener('change',()=>this.markUserEditing(),{passive:true});
       });
-      const bf=U.$('#booking-form'); if(bf){ U.$('#btn-check-availability').onclick=()=>this.checkAvailability(); bf.onsubmit=async e=>{e.preventDefault(); await this.createBooking(U.serialize(bf));}; }
+      const bf=U.$('#booking-form'); if(bf){
+        const trigger=()=>{ clearTimeout(this._slotTimer); this._slotTimer=setTimeout(()=>this.checkAvailability(false),250); };
+        ['booking_date','service_id','operator_id'].forEach(name=>{ if(bf.elements[name]) bf.elements[name].addEventListener('change',trigger,{passive:true}); });
+        const btn=U.$('#btn-check-availability'); if(btn) btn.onclick=()=>this.checkAvailability(true);
+        bf.onsubmit=async e=>{e.preventDefault(); await this.createBooking(U.serialize(bf));};
+      }
       const ff=U.$('#btn-filter-bookings'); if(ff) ff.onclick=()=>this.filterBookings();
       const of=U.$('#operator-form'); if(of) of.onsubmit=async e=>{e.preventDefault(); await this.saveOperator(U.serialize(of));};
       const sf=U.$('#service-form'); if(sf) sf.onsubmit=async e=>{e.preventDefault(); await this.saveService(U.serialize(sf));};

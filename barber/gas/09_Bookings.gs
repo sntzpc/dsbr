@@ -56,15 +56,17 @@ function createBooking_(payload) {
     const operators = getActiveOperatorsForDate_(date);
     if (operators.length === 0) throw new Error('Tidak ada operator aktif pada tanggal tersebut.');
 
+    const requestedSlot = toTimeOnly_(payload.slot_time);
+    if (!requestedSlot) throw new Error('Slot waktu tidak valid.');
+
     let operator = null;
     if (payload.operator_id && payload.operator_id !== 'ANY') {
       operator = operators.find(function(o) { return String(o.operator_id) === String(payload.operator_id); });
       if (!operator) throw new Error('Operator tidak tersedia.');
+      assertSlotAvailable_(operator, date, requestedSlot, number_(service.duration_min, 30));
     } else {
-      operator = chooseLeastBusyOperator_(operators, date);
+      operator = chooseAvailableOperatorForSlot_(operators, date, requestedSlot, number_(service.duration_min, 30));
     }
-
-    assertOperatorCapacityAvailable_(operator, date);
 
     const queueNo = getNextQueueNo_(date);
     const now = now_();
@@ -80,7 +82,7 @@ function createBooking_(payload) {
       operator_id: operator.operator_id,
       operator_name: operator.operator_name,
       chair_no: operator.chair_no || '',
-      slot_time: toTimeOnly_(payload.slot_time),
+      slot_time: requestedSlot,
       estimated_duration_min: number_(service.duration_min, 30),
       status: BOOKING_STATUS.BOOKED,
       price: number_(service.price, 0),
@@ -234,28 +236,75 @@ function getNextQueueNo_(date) {
 }
 
 function buildSlots_(date, operators, bookings, durationMin) {
-  const open = String(getSettingValue_('open_time', '08:00:00'));
-  const close = String(getSettingValue_('close_time', '21:00:00'));
+  const open = toTimeOnly_(getSettingValue_('open_time', '08:00:00')) || '08:00:00';
+  const close = toTimeOnly_(getSettingValue_('close_time', '21:00:00')) || '21:00:00';
+  const dur = Math.max(5, number_(durationMin, number_(getSettingValue_('default_service_duration_min', 30), 30)));
   const slots = [];
   operators.forEach(function(op) {
-    let startMin = timeToMinutes_(op.work_start || open);
-    const endMin = timeToMinutes_(op.work_end || close);
-    const opBookings = bookings.filter(function(b) { return String(b.operator_id) === String(op.operator_id); });
+    let startMin = timeToMinutes_(toTimeOnly_(op.work_start) || open);
+    const endMin = timeToMinutes_(toTimeOnly_(op.work_end) || close);
+    if (endMin <= startMin) return;
+    const opBookings = (bookings || []).filter(function(b) { return String(b.operator_id) === String(op.operator_id); });
     const cap = getOperatorCapacityForDate_(date, op);
-    while (startMin + durationMin <= endMin) {
+    while (startMin + dur <= endMin) {
       const time = minutesToTime_(startMin);
-      const bookedAtSlot = opBookings.some(function(b) { return toTimeOnly_(b.slot_time) === time; });
+      const hasConflict = hasSlotConflict_(opBookings, startMin, startMin + dur);
       slots.push({
         operator_id: op.operator_id,
         operator_name: op.operator_name,
         chair_no: op.chair_no || '',
         slot_time: time,
-        available: !bookedAtSlot && opBookings.length < cap
+        available: !hasConflict && opBookings.length < cap
       });
-      startMin += durationMin;
+      startMin += dur;
     }
   });
   return slots;
+}
+
+function hasSlotConflict_(bookings, startMin, endMin) {
+  return (bookings || []).some(function(b) {
+    const bStart = timeToMinutes_(toTimeOnly_(b.slot_time));
+    const bDur = Math.max(5, number_(b.estimated_duration_min, number_(getSettingValue_('default_service_duration_min', 30), 30)));
+    return startMin < (bStart + bDur) && bStart < endMin;
+  });
+}
+
+function assertSlotAvailable_(operator, date, slotTime, durationMin) {
+  const bookings = getBookingsByDate_(date).filter(function(b) {
+    return String(b.operator_id) === String(operator.operator_id) && ACTIVE_BOOKING_STATUSES.indexOf(String(b.status)) >= 0;
+  });
+  const cap = getOperatorCapacityForDate_(date, operator);
+  if (bookings.length >= cap) throw new Error('Kapasitas operator ' + operator.operator_name + ' sudah penuh.');
+
+  const open = toTimeOnly_(getSettingValue_('open_time', '08:00:00')) || '08:00:00';
+  const close = toTimeOnly_(getSettingValue_('close_time', '21:00:00')) || '21:00:00';
+  const startMin = timeToMinutes_(slotTime);
+  const endMin = startMin + Math.max(5, number_(durationMin, 30));
+  const opStart = timeToMinutes_(toTimeOnly_(operator.work_start) || open);
+  const opEnd = timeToMinutes_(toTimeOnly_(operator.work_end) || close);
+  if (startMin < opStart || endMin > opEnd) throw new Error('Slot di luar jam kerja operator.');
+  if (hasSlotConflict_(bookings, startMin, endMin)) throw new Error('Slot tersebut sudah dipilih pelanggan lain. Silakan pilih slot lain.');
+  return true;
+}
+
+function chooseAvailableOperatorForSlot_(operators, date, slotTime, durationMin) {
+  let selected = null;
+  let minCount = 999999;
+  operators.forEach(function(o) {
+    try {
+      assertSlotAvailable_(o, date, slotTime, durationMin);
+      const count = getBookingsByDate_(date).filter(function(b) {
+        return String(b.operator_id) === String(o.operator_id) && ACTIVE_BOOKING_STATUSES.indexOf(String(b.status)) >= 0;
+      }).length;
+      if (count < minCount) {
+        selected = o;
+        minCount = count;
+      }
+    } catch (err) {}
+  });
+  if (!selected) throw new Error('Slot tersebut sudah tidak tersedia. Silakan pilih slot lain.');
+  return selected;
 }
 
 function timeToMinutes_(hhmm) {

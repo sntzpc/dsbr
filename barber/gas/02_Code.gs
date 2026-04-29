@@ -54,6 +54,7 @@ function routeAction_(action, payload, e) {
 
     getSettings: getSettings_,
     saveSettings: saveSettings_,
+    getAppSnapshot: getAppSnapshot_,
 
     listOperators: listOperators_,
     saveOperator: saveOperator_,
