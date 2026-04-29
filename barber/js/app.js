@@ -2,11 +2,11 @@
   const U = window.Utils;
   const C = window.CONSTANTS;
   const App = {
-    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
+    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, loyalty:null, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
     nav:{
       ADMIN:[['dashboard','🏠','Dashboard'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
       OPERATOR:[['dashboard','🏠','Dashboard'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
-      CUSTOMER:[['dashboard','🏠','Dashboard'],['booking','🗓️','Booking'],['queue','📡','Antrian Live'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']]
+      CUSTOMER:[['dashboard','🏠','Dashboard'],['booking','🗓️','Booking'],['queue','📡','Antrian Live'],['loyalty','⭐','Loyalty'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']]
     },
     init(){
       this.applyTheme(localStorage.getItem(APP_CONFIG.THEME_KEY) || APP_CONFIG.DEFAULT_THEME);
@@ -49,7 +49,7 @@
     },
     async logout(){
       try{ if(this.state.token) await this.api('logout'); }catch(e){}
-      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false,tablePages:{}}; this.showAuth();
+      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,loyalty:null,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false,tablePages:{}}; this.showAuth();
     },
     showAuth(){ U.$('#auth-screen').classList.remove('hidden'); U.$('#app-shell').classList.add('hidden'); },
     showApp(){
@@ -134,13 +134,15 @@
     async loadSnapshot(silent=false){
       const role=this.state.user.role, date=U.today();
       const includeHistory=(role==='CUSTOMER' && this.state.page==='history');
-      const snap=await this.api('getAppSnapshot',{date,page:this.state.page,include_notifications:!silent,include_history:includeHistory});
+      const includeLoyalty=(role==='CUSTOMER' && !silent);
+      const snap=await this.api('getAppSnapshot',{date,page:this.state.page,include_notifications:!silent,include_history:includeHistory,include_loyalty:includeLoyalty});
       this.state.settings=snap.settings||{};
       this.state.operators=snap.operators||[];
       this.state.services=snap.services||[];
       if(!silent || (snap.notifications||[]).length) this.state.notifications=snap.notifications||this.state.notifications||[];
       this.state.dashboard=snap.dashboard||null;
       this.state.queue=snap.queue||(snap.dashboard&&snap.dashboard.queue)||null;
+      if(snap.loyalty) this.state.loyalty=snap.loyalty;
       this.state.bookings=snap.bookings||[];
       U.$("#sidebar-shop-name").textContent=this.state.settings.barbershop_name||"BarberBook";
       const unread=snap.unread_count!==undefined?snap.unread_count:(this.state.notifications||[]).filter(n=>String(n.read_status).toLowerCase()!=='true').length;
@@ -260,7 +262,7 @@
       (map[page]||map.dashboard)();
     },
     renderCustomer(page){
-      const map={dashboard:()=>this.customerDashboard(),booking:()=>this.customerBooking(),queue:()=>this.queueLivePage(),history:()=>this.customerHistory(),notifications:()=>this.notificationsPage()};
+      const map={dashboard:()=>this.customerDashboard(),booking:()=>this.customerBooking(),queue:()=>this.queueLivePage(),loyalty:()=>this.customerLoyaltyPage(),history:()=>this.customerHistory(),notifications:()=>this.notificationsPage()};
       (map[page]||map.dashboard)();
     },
     adminDashboard(){
@@ -268,13 +270,13 @@
       U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="grid grid-2" style="margin-top:16px"><div class="card">${this.queuePreview()}</div><div class="card">${this.todayBookingsTable(this.state.bookings.slice(0,8),'dashboardBookings')}</div></div>`;
     },
     operatorDashboard(){
-      this.setTitle('Dashboard Operator','Order masuk ke operator hari ini'); const s=this.state.dashboard?.summary||{};
+      this.setTitle('Dashboard Operator','Order masuk hari ini'); const s=this.state.dashboard?.summary||{};
       U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="card" style="margin-top:16px">${this.operatorActionList(this.state.bookings)}</div>`;
     },
     customerDashboard(){
       this.setTitle('Dashboard Pelanggan','Booking, pembayaran, dan antrian secara live'); const b=this.state.dashboard?.active_booking;
       const bookingHtml=b?`<div class="card soft"><h3>Booking Aktif Anda</h3><div class="grid grid-4">${this.stat('Nomor Antrian',b.queue_no,'')}${this.stat('Status',U.statusLabel(b.status),'')}${this.stat('Operator',b.operator_name||'-','')}${this.stat('Jam',U.formatTime(b.slot_time)||'-','')}</div><div class="action-row" style="margin-top:16px"><button class="success-btn" data-action="checkIn" data-id="${b.booking_id}">Check-in</button><button class="danger-btn" data-action="cancelBooking" data-id="${b.booking_id}">Batalkan</button></div></div>${this.paymentInfoCard(b)}`:`<div class="card empty-state"><b>Belum ada booking aktif hari ini</b><p>Silakan buat booking baru sesuai jadwal yang tersedia.</p><button class="primary-btn" data-go="booking">Buat Booking</button></div>`;
-      U.$('#content').innerHTML=`${bookingHtml}<div class="card" style="margin-top:16px">${this.queuePreview()}</div>`;
+      U.$('#content').innerHTML=`${bookingHtml}${this.loyaltyMiniCard()}<div class="card" style="margin-top:16px">${this.queuePreview()}</div>`;
     },
     queuePreview(){
       const q=this.state.queue||this.state.dashboard?.queue||{}; const cur=q.current||[];
@@ -298,9 +300,34 @@
       const meta=this.paginate('queueTable',q);
       return `<h3>Daftar Antrian Hari Ini</h3><div class="table-wrap"><table><thead><tr><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Status</th></tr></thead><tbody>${meta.rows.map(x=>`<tr><td>${x.queue_no}</td><td>${U.esc(x.customer_initial)}</td><td>${U.esc(x.service_name)}</td><td>${U.esc(x.operator_name)}</td><td>${U.esc(U.formatTime(x.slot_time))}</td><td>${U.badge(x.status)}</td></tr>`).join('')||'<tr><td colspan="6">Belum ada antrian.</td></tr>'}</tbody></table></div>${this.paginationControls('queueTable',meta)}`;
     },
+    loyaltyMiniCard(){
+      const l=this.state.loyalty;
+      const s=this.state.settings||{};
+      if(String(s.loyalty_enabled).toLowerCase()!=='true') return '';
+      if(!l) return `<div class="card loyalty-card" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>⭐ Loyalty</h2><span class="badge">Aktif</span></div><p>Status loyalty sedang dimuat. Buka menu Loyalty untuk melihat detail benefit.</p></div>`;
+      const level=l.priority_level||'NORMAL';
+      const cls=level==='VIP'?'vip':(level==='PRIORITY'?'priority':'normal');
+      return `<div class="card loyalty-card ${cls}" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>⭐ ${U.esc(l.program_name||'Loyalty')}</h2><span class="badge">${U.esc(level)}</span></div><div class="loyalty-progress"><span style="width:${Number(l.progress_percent||0)}%"></span></div><p><b>${U.esc(l.benefit||'')}</b></p><small>${U.esc(l.next_target_text||'')}</small><div class="action-row" style="margin-top:12px"><button class="ghost-btn small" data-go="loyalty">Lihat Detail Loyalty</button></div></div>`;
+    },
+    customerLoyaltyPage(){
+      this.setTitle('Loyalty Pelanggan','Status prioritas dan manfaat pelanggan setia');
+      const s=this.state.settings||{};
+      const l=this.state.loyalty;
+      if(String(s.loyalty_enabled).toLowerCase()!=='true'){
+        U.$('#content').innerHTML=`<div class="card empty-state"><b>Program loyalty belum aktif</b><p>Barbershop belum mengaktifkan program loyalty untuk pelanggan.</p></div>`;
+        return;
+      }
+      if(!l){
+        U.$('#content').innerHTML=`<div class="card empty-state"><b>Data loyalty belum dimuat</b><p>Tekan refresh untuk mengambil status loyalty terbaru.</p><button class="primary-btn" id="btn-refresh-loyalty">Refresh Loyalty</button></div>`;
+        const b=U.$('#btn-refresh-loyalty'); if(b) b.onclick=()=>this.refresh();
+        return;
+      }
+      const level=l.priority_level||'NORMAL';
+      U.$('#content').innerHTML=`<div class="card loyalty-card ${level==='VIP'?'vip':(level==='PRIORITY'?'priority':'normal')}"><div class="section-title" style="margin-top:0"><h2>⭐ ${U.esc(l.program_name)}</h2><span class="badge">${U.esc(level)}</span></div><p>${U.esc(l.program_description||'')}</p><div class="loyalty-progress big"><span style="width:${Number(l.progress_percent||0)}%"></span></div><div class="grid grid-4" style="margin-top:14px">${this.stat('Kunjungan Lunas',l.total_paid_visits||0,'Dari history Payments')}${this.stat('Total Belanja',U.rupiah(l.total_paid_amount||0),'Transaksi PAID')}${this.stat('Poin',l.points||0,'Akumulasi')}${this.stat('Kunjungan Periode',l.visits_in_period||0,'Periode berjalan')}</div><div class="card soft" style="margin-top:16px"><h3>Benefit Saat Ini</h3><p><b>${U.esc(l.benefit||'')}</b></p><p>${U.esc(l.next_target_text||'')}</p><small>Catatan: status loyalty dihitung otomatis dari pembayaran berstatus PAID. Jika pembayaran baru saja dicatat, tekan Refresh agar status terbaru tampil.</small></div></div>`;
+    },
     customerHistory(){ this.setTitle('Riwayat Booking','Semua booking milik pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'customerHistoryBookings')}</div>`; },
-    operatorQueue(){ this.setTitle('Antrian Saya','Panggil, mulai, dan selesaikan order pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.operatorActionList(this.state.bookings)}</div>`; },
-    operatorHistory(){ this.setTitle('Riwayat Layanan','Order operator hari ini dan riwayat status'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'operatorHistoryBookings')}</div>`; },
+    operatorQueue(){ this.setTitle('Antrian Saya','Panggil, mulai, dan selesaikan orderan'); U.$('#content').innerHTML=`<div class="card">${this.operatorActionList(this.state.bookings)}</div>`; },
+    operatorHistory(){ this.setTitle('Riwayat Layanan','Order hari ini dan riwayat status'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'operatorHistoryBookings')}</div>`; },
     operatorActionList(rows){ return `<h3>Order Hari Ini</h3><div class="queue-list">${rows.length?rows.map(b=>`<div class="queue-item status-${U.esc(String(b.status||'').toLowerCase())}"><div class="queue-no">${U.esc(b.queue_no)}</div><div class="queue-main"><b>${U.esc(b.customer_name)} · ${U.esc(b.service_name)}</b><span>${U.esc(U.formatTime(b.slot_time))} · ${U.statusLabel(b.status)} · ${U.paymentLabel(b.payment_status)}</span><small class="operator-hint">${this.operatorFlowHint(b)}</small></div><div class="action-row operator-actions">${this.operatorButtons(b)}</div></div>`).join(''):'<div class="empty-state"><b>Belum ada order</b><p>Order baru akan tampil otomatis.</p></div>'}</div>`; },
     operatorFlowHint(b){
       const st=String(b.status||'').toUpperCase();
@@ -348,6 +375,17 @@
       this.setTitle('Master Layanan','Jenis layanan, durasi, dan harga');
       U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><h3>Form Layanan</h3><form id="service-form"><input type="hidden" name="service_id"><label>Nama Layanan<input name="service_name" required></label><label>Durasi Menit<input type="number" name="duration_min" value="30" required></label><label>Harga<input type="number" name="price" value="25000" required></label><label>Deskripsi<textarea name="description"></textarea></label><button class="primary-btn full">Simpan Layanan</button></form></div><div class="card"><h3>Daftar Layanan</h3><div class="queue-list">${this.state.services.map(s=>`<div class="queue-item"><div class="queue-no">${U.esc(s.duration_min)}</div><div class="queue-main"><b>${U.esc(s.service_name)}</b><span>${U.rupiah(s.price)} · ${U.esc(s.description||'-')}</span></div><button class="ghost-btn mini" data-edit-service='${JSON.stringify(s).replace(/'/g,'&#39;')}'>Edit</button></div>`).join('')||'<div class="empty-state"><b>Belum ada layanan</b></div>'}</div></div></div>`;
     },
+    loyaltyProgramOptions(selected){
+      selected=String(selected||'POINTS_PRIORITY').toUpperCase();
+      const opts=[
+        ['POINTS_PRIORITY','1. Poin Loyal Prioritas'],
+        ['VISIT_REWARD','2. Kunjungan Berhadiah'],
+        ['SPEND_VIP','3. VIP Berdasarkan Belanja'],
+        ['MONTHLY_ACTIVE','4. Pelanggan Aktif Bulanan'],
+        ['HYBRID_ELITE','5. Elite Gabungan Visit + Belanja']
+      ];
+      return opts.map(([v,t])=>`<option value="${v}" ${selected===v?'selected':''}>${t}</option>`).join('');
+    },
     adminSettings(){
       this.setTitle('Pengaturan Barbershop','Profil, jam operasional, payment gateway, dan QRIS statis'); const s=this.state.settings;
       const qris=this.qrisAsset(s)?`<div class="span-2">${this.qrisLinkHtml(s,'admin')}</div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
@@ -362,6 +400,18 @@
         <label>Maks Booking/Pelanggan/Hari<input type="number" name="max_booking_per_customer_per_day" value="${U.esc(s.max_booking_per_customer_per_day||1)}"></label>
         <label class="span-2">Alamat<textarea name="address">${U.esc(s.address||'')}</textarea></label>
         <label class="span-2">Hari Operasional<input name="operational_days" value="${U.esc(s.operational_days||'1,2,3,4,5,6,0')}"><small>0=Minggu, 1=Senin, dst. Contoh setiap hari: 1,2,3,4,5,6,0</small></label>
+        <h3 class="span-2">Program Loyalty Pelanggan</h3>
+        <label>Aktifkan Loyalty<select name="loyalty_enabled"><option value="false" ${String(s.loyalty_enabled).toLowerCase()==='true'?'':'selected'}>Tidak Aktif</option><option value="true" ${String(s.loyalty_enabled).toLowerCase()==='true'?'selected':''}>Aktif</option></select></label>
+        <label>Jenis Program Loyalty<select name="loyalty_program_type">${this.loyaltyProgramOptions(s.loyalty_program_type)}</select><small>Pilih salah satu dari 5 alternatif program.</small></label>
+        <label>Poin per Transaksi Lunas<input type="number" name="loyalty_points_per_paid" value="${U.esc(s.loyalty_points_per_paid||1)}"></label>
+        <label>Target Kunjungan/Poin<input type="number" name="loyalty_visit_threshold" value="${U.esc(s.loyalty_visit_threshold||5)}"></label>
+        <label>Target Belanja VIP<input type="number" name="loyalty_spend_threshold" value="${U.esc(s.loyalty_spend_threshold||250000)}"></label>
+        <label>Reward Setiap Berapa Kunjungan<input type="number" name="loyalty_free_visit_every" value="${U.esc(s.loyalty_free_visit_every||6)}"></label>
+        <label>Periode Aktif Bulanan/Hari<input type="number" name="loyalty_monthly_period_days" value="${U.esc(s.loyalty_monthly_period_days||30)}"></label>
+        <label>Min. Kunjungan Periode<input type="number" name="loyalty_monthly_visit_min" value="${U.esc(s.loyalty_monthly_visit_min||3)}"></label>
+        <label>Elite: Min. Kunjungan<input type="number" name="loyalty_hybrid_visit_min" value="${U.esc(s.loyalty_hybrid_visit_min||8)}"></label>
+        <label>Elite: Min. Belanja<input type="number" name="loyalty_hybrid_spend_min" value="${U.esc(s.loyalty_hybrid_spend_min||400000)}"></label>
+        <div class="span-2 card soft"><b>5 alternatif loyalty</b><p style="color:var(--muted)">1) Poin Loyal Prioritas, 2) Kunjungan Berhadiah, 3) VIP Berdasarkan Belanja, 4) Pelanggan Aktif Bulanan, 5) Elite Gabungan Visit + Belanja. Semua dihitung dari history Payments berstatus PAID.</p></div>
         <h3 class="span-2">Setting Website & Tripay</h3>
         <label class="span-2">URL Website<input name="website_url" placeholder="https://domain-anda.com" value="${U.esc(s.website_url||location.origin)}"><small>URL ini dipakai untuk pengajuan merchant Tripay.</small></label>
         <label>Aktifkan Payment Gateway<select name="payment_gateway_enabled"><option value="false" ${String(s.payment_gateway_enabled).toLowerCase()==='true'?'':'selected'}>Tidak</option><option value="true" ${String(s.payment_gateway_enabled).toLowerCase()==='true'?'selected':''}>Ya</option></select></label>
@@ -381,7 +431,7 @@
       U.$('#content').innerHTML=`<div class="card"><div class="toolbar"><label>Dari<input id="report-from" type="date" value="${U.addDays(-30)}"></label><label>Sampai<input id="report-to" type="date" value="${U.today()}"></label><button class="primary-btn" id="btn-load-report">Tampilkan</button><button class="ghost-btn" onclick="window.print()">Print/PDF</button></div></div><div id="report-output" class="grid" style="margin-top:16px"></div>`;
     },
     notificationsPage(){
-      this.setTitle('Notifikasi','Pesan dan pemberitahuan aplikasi');
+      this.setTitle('Notifikasi','Pemberitahuan aplikasi');
       U.$('#content').innerHTML=`<div class="card"><div class="notif-panel">${this.state.notifications.length?this.state.notifications.map(n=>`<div class="notif-item ${String(n.read_status).toLowerCase()==='true'?'':'unread'}"><b>${U.esc(n.title)}</b><p>${U.esc(n.message)}</p><small>${U.esc(U.dateTime(n.created_at))}</small>${String(n.read_status).toLowerCase()==='true'?'':`<div style="margin-top:8px"><button class="ghost-btn mini" data-read-notif="${n.notification_id}">Tandai dibaca</button></div>`}</div>`).join(''):'<div class="empty-state"><b>Tidak ada notifikasi</b></div>'}</div></div>`;
     },
     async checkAvailability(showToast=false){

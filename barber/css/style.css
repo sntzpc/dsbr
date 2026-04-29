@@ -101,3 +101,15 @@ button[aria-disabled="true"]{
 .receipt-center{text-align:center}.receipt-center h1{font-size:15px;line-height:1.1;margin:0 0 4px;text-transform:uppercase}.receipt-center p{margin:2px 0}.receipt-row{display:flex;justify-content:space-between;gap:8px;margin:4px 0}.receipt-row span:first-child{color:#333}.receipt-row b{text-align:right}.receipt-row.total{font-size:13px}.receipt-item{display:flex;justify-content:space-between;gap:8px;margin:6px 0}.receipt-notes{margin:6px 0}.receipt-58 hr{border:0;border-top:1px dashed #111;margin:7px 0}
 @media(max-width:680px){.operator-actions{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;padding-bottom:2px}.operator-actions .mini{flex:0 0 auto}.receipt-modal-wrap{max-height:55vh}.receipt-58{width:54mm;font-size:10px;padding:3mm}}
 @media print{.receipt-58{width:52mm;box-shadow:none;padding:0}.receipt-modal-wrap{border:0;max-height:none;overflow:visible}}
+
+/* PATCH 2026-04-29: Loyalty pelanggan */
+.loyalty-card{position:relative;overflow:hidden;}
+.loyalty-card::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:var(--line);}
+.loyalty-card.priority::before{background:linear-gradient(90deg,var(--primary),var(--success));}
+.loyalty-card.vip::before{background:linear-gradient(90deg,var(--warning),var(--primary));}
+.loyalty-progress{height:10px;background:var(--bg2);border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:8px 0 10px;}
+.loyalty-progress.big{height:14px;margin:14px 0;}
+.loyalty-progress span{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));border-radius:999px;min-width:2%;}
+.loyalty-card.vip .loyalty-progress span{background:linear-gradient(90deg,var(--warning),var(--primary));}
+.loyalty-card.priority .badge,.loyalty-card.vip .badge{border-color:transparent;background:var(--primary);color:var(--primaryText);}
+@media(max-width:680px){.loyalty-card p,.loyalty-card small{overflow-wrap:anywhere;}}

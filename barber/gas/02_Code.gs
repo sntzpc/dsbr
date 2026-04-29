@@ -81,6 +81,7 @@ function routeAction_(action, payload, e) {
 
     createPayment: createPayment_,
     listPayments: listPayments_,
+    getLoyaltyStatus: getLoyaltyStatus_,
     getTripayChannels: getTripayChannels_,
     createTripayPayment: createTripayPayment_,
     checkTripayPaymentStatus: checkTripayPaymentStatus_,

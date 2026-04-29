@@ -8,6 +8,7 @@ function getAppSnapshot_(payload) {
   const page = String(payload.page || '').trim();
   const includeNotifications = payload.include_notifications === true || String(payload.include_notifications) === 'true';
   const includeHistory = payload.include_history === true || String(payload.include_history) === 'true' || page === 'history';
+  const includeLoyalty = payload.include_loyalty === true || String(payload.include_loyalty) === 'true';
 
   const settingsRes = getSettingsSnapshotForUser_(user);
   const operators = getRowsAsObjects_('Operators').filter(function(o) { return bool_(o.active); }).map(cleanRow_);
@@ -26,7 +27,8 @@ function getAppSnapshot_(payload) {
     unread_count: notifInfo.unread_count,
     dashboard: null,
     queue: null,
-    bookings: []
+    bookings: [],
+    loyalty: null
   };
 
   if (user.role === USER_ROLES.ADMIN) {
@@ -48,6 +50,7 @@ function getAppSnapshot_(payload) {
     const queue = buildQueueLiveFromBookings_(date, todayBookings);
     result.dashboard = { status: APP_CONFIG.API_OK, date: date, active_booking: active ? cleanRow_(active) : null, queue: queue };
     result.queue = queue;
+    if (includeLoyalty) result.loyalty = buildCustomerLoyaltyStatus_(user.user_id, result.settings);
     if (includeHistory) {
       result.bookings = getRowsAsObjects_('Bookings')
         .filter(function(b) { return String(b.customer_id) === String(user.user_id); })
