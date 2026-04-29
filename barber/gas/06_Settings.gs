@@ -85,8 +85,11 @@ function normalizeQrisSettings_(settings) {
 
   if (fileId) {
     settings.qris_static_file_id = fileId;
-    settings.qris_static_url = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w1000';
-    settings.qris_static_download_url = 'https://drive.google.com/uc?export=view&id=' + encodeURIComponent(fileId);
+    // QRIS tidak ditampilkan sebagai gambar otomatis di frontend. URL utama diarahkan ke halaman preview Drive.
+    settings.qris_static_url = buildDrivePreviewUrl_(fileId);
+    settings.qris_static_view_url = buildDrivePreviewUrl_(fileId);
+    settings.qris_static_download_url = buildDriveDownloadUrl_(fileId);
+    settings.qris_static_thumbnail_url = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w1000';
   }
 
   return settings;
@@ -120,4 +123,12 @@ function extractDriveFileId_(value) {
   }
 
   return '';
+}
+
+function buildDrivePreviewUrl_(fileId) {
+  return 'https://drive.google.com/file/d/' + encodeURIComponent(fileId) + '/view?usp=sharing';
+}
+
+function buildDriveDownloadUrl_(fileId) {
+  return 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(fileId);
 }

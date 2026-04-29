@@ -35,3 +35,10 @@ html[data-theme="dark"]{
   .queue-list{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .queue-item{min-width:620px;}
 }
+
+/* PATCH 2026-04-29: QRIS statis tidak lagi ditampilkan sebagai gambar otomatis */
+.qris-img{display:none!important;}
+.qris-link-box{margin-top:8px;border:1px dashed var(--line);background:var(--bg2);border-radius:18px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.qris-link-box p{margin:4px 0 0;color:var(--muted);font-size:13px;max-width:640px;}
+.qris-link-box a{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;}
+@media(max-width:680px){.qris-link-box{align-items:flex-start}.qris-link-box .action-row{width:100%;overflow-x:auto;}}

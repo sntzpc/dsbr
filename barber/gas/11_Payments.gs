@@ -329,12 +329,14 @@ function saveQrisStatic_(payload) {
   const file = DriveApp.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
-  upsertSetting_('qris_static_file_id', file.getId(), 'File ID QRIS statis di Drive', user.user_id);
-  upsertSetting_('qris_static_url', url, 'URL publik QRIS statis', user.user_id);
+  const fileId = file.getId();
+  const url = buildDrivePreviewUrl_(fileId);
+  const downloadUrl = buildDriveDownloadUrl_(fileId);
+  upsertSetting_('qris_static_file_id', fileId, 'File ID QRIS statis di Drive', user.user_id);
+  upsertSetting_('qris_static_url', url, 'Link buka QRIS statis di Drive', user.user_id);
 
   writeAuditLog_(user, 'SAVE_QRIS_STATIC', 'Settings', 'qris_static_url', null, url, 'Upload QRIS statis');
-  return { status: APP_CONFIG.API_OK, message: 'QRIS statis berhasil diupload.', qris_static_url: url, file_id: file.getId() };
+  return { status: APP_CONFIG.API_OK, message: 'QRIS statis berhasil diupload.', qris_static_url: url, qris_static_view_url: url, qris_static_download_url: downloadUrl, file_id: fileId };
 }
 
 /**
@@ -457,10 +459,12 @@ function finishQrisUpload_(payload) {
   var file = DriveApp.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
+  var fileId = file.getId();
+  var url = buildDrivePreviewUrl_(fileId);
+  var downloadUrl = buildDriveDownloadUrl_(fileId);
 
-  upsertSetting_('qris_static_file_id', file.getId(), 'File ID QRIS statis di Drive', user.user_id);
-  upsertSetting_('qris_static_url', url, 'URL publik QRIS statis', user.user_id);
+  upsertSetting_('qris_static_file_id', fileId, 'File ID QRIS statis di Drive', user.user_id);
+  upsertSetting_('qris_static_url', url, 'Link buka QRIS statis di Drive', user.user_id);
 
   writeAuditLog_(user, 'SAVE_QRIS_STATIC_CHUNKED', 'Settings', 'qris_static_url', null, url, 'Upload QRIS statis via chunk JSONP Chrome Mobile');
 
@@ -468,7 +472,9 @@ function finishQrisUpload_(payload) {
     status: APP_CONFIG.API_OK,
     message: 'QRIS statis berhasil diupload.',
     qris_static_url: url,
-    file_id: file.getId()
+    qris_static_view_url: url,
+    qris_static_download_url: downloadUrl,
+    file_id: fileId
   };
 }
 

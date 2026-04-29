@@ -179,23 +179,43 @@
       ${this.stat('Total Booking',s.total||0,'Hari ini')}${this.stat('Menunggu',(s.booked||0)+(s.checked_in||0)+(s.called||0),'Belum dilayani')}${this.stat('Dilayani',s.in_service||0,'Sedang berjalan')}${this.stat('Selesai',s.finished||0,U.rupiah(s.finished_revenue||0))}
     </div>`; },
     stat(label,val,sub){ return `<div class="card stat-card"><small>${label}</small><b>${val}</b><span>${sub||''}</span></div>`; },
+    qrisAsset(settings={}){
+      const fileId = settings.qris_static_file_id || this.extractDriveFileId(settings.qris_static_url || '') || this.extractDriveFileId(settings.qris_static_download_url || '') || this.extractDriveFileId(settings.qris_static_view_url || '');
+      const cleanUrl = settings.qris_static_view_url || settings.qris_static_url || '';
+      if(fileId){
+        return {
+          fileId,
+          viewUrl: `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view?usp=sharing`,
+          downloadUrl: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`,
+          thumbnailUrl: `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1000`
+        };
+      }
+      if(cleanUrl){
+        return { fileId:'', viewUrl: cleanUrl, downloadUrl: settings.qris_static_download_url || cleanUrl, thumbnailUrl: cleanUrl };
+      }
+      return null;
+    },
     qrisImgUrl(settings={}){
-      const fileId = settings.qris_static_file_id || this.extractDriveFileId(settings.qris_static_url || '');
-      if(fileId) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1000`;
-      return settings.qris_static_url || '';
+      const q=this.qrisAsset(settings);
+      return q ? q.thumbnailUrl : '';
     },
     extractDriveFileId(url){
-      const raw=String(url||'');
-      let m=raw.match(/[?&]id=([^&]+)/); if(m) return decodeURIComponent(m[1]);
-      m=raw.match(/\/d\/([^/]+)/); if(m) return m[1];
+      const raw=String(url||'').trim();
+      if(!raw) return '';
+      if(/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return raw;
+      let decoded=raw;
+      try{ decoded=decodeURIComponent(raw); }catch(e){ decoded=raw; }
+      const patterns=[/[?&]id=([a-zA-Z0-9_-]{20,})/,/\/d\/([a-zA-Z0-9_-]{20,})/,/file\/d\/([a-zA-Z0-9_-]{20,})/,/thumbnail\?id=([a-zA-Z0-9_-]{20,})/,/uc\?export=(?:view|download)&id=([a-zA-Z0-9_-]{20,})/];
+      for(const re of patterns){ const m=decoded.match(re); if(m&&m[1]) return m[1]; }
       return '';
     },
-    qrisImageHtml(settings={}, maxWidth='260px'){
-      const src=this.qrisImgUrl(settings);
-      if(!src) return '';
-      const fileId=settings.qris_static_file_id || this.extractDriveFileId(settings.qris_static_url||'');
-      const fallback=fileId?`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`:(settings.qris_static_url||'');
-      return `<img src="${U.esc(src)}" data-fallback-src="${U.esc(fallback)}" alt="QRIS Statis" class="qris-img" style="max-width:${maxWidth}">`;
+    qrisLinkHtml(settings={}, mode='customer'){
+      const q=this.qrisAsset(settings);
+      if(!q) return '';
+      const help = mode==='admin'
+        ? 'QRIS statis sudah tersimpan. Klik link untuk membuka atau menyimpan file.'
+        : 'Klik tombol di bawah untuk membuka atau menyimpan QRIS statis.';
+      return `<div class="qris-link-box"><div><b>QRIS Statis</b><p>${U.esc(help)}</p></div><div class="action-row no-wrap-actions"><a class="primary-btn mini" href="${U.esc(q.viewUrl)}" target="_blank" rel="noopener noreferrer">Buka QRIS</a><a class="ghost-btn mini" href="${U.esc(q.downloadUrl)}" target="_blank" rel="noopener noreferrer" download>Simpan QRIS</a></div></div>`;
     },
     sortNewestRows(rows=[]){
       return (rows||[]).slice().sort((a,b)=>{
@@ -244,7 +264,7 @@
       (map[page]||map.dashboard)();
     },
     adminDashboard(){
-      this.setTitle('Dashboard Admin','Ringkasan operasional barbershop hari ini'); const s=this.state.dashboard?.summary||{};
+      this.setTitle('Dashboard Admin','Ringkasan hari ini'); const s=this.state.dashboard?.summary||{};
       U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="grid grid-2" style="margin-top:16px"><div class="card">${this.queuePreview()}</div><div class="card">${this.todayBookingsTable(this.state.bookings.slice(0,8),'dashboardBookings')}</div></div>`;
     },
     operatorDashboard(){
@@ -252,7 +272,7 @@
       U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="card" style="margin-top:16px">${this.operatorActionList(this.state.bookings)}</div>`;
     },
     customerDashboard(){
-      this.setTitle('Dashboard Pelanggan','Pantau booking, pembayaran, dan antrian secara live'); const b=this.state.dashboard?.active_booking;
+      this.setTitle('Dashboard Pelanggan','Booking, pembayaran, dan antrian secara live'); const b=this.state.dashboard?.active_booking;
       const bookingHtml=b?`<div class="card soft"><h3>Booking Aktif Anda</h3><div class="grid grid-4">${this.stat('Nomor Antrian',b.queue_no,'')}${this.stat('Status',U.statusLabel(b.status),'')}${this.stat('Operator',b.operator_name||'-','')}${this.stat('Jam',U.formatTime(b.slot_time)||'-','')}</div><div class="action-row" style="margin-top:16px"><button class="success-btn" data-action="checkIn" data-id="${b.booking_id}">Check-in</button><button class="danger-btn" data-action="cancelBooking" data-id="${b.booking_id}">Batalkan</button></div></div>${this.paymentInfoCard(b)}`:`<div class="card empty-state"><b>Belum ada booking aktif hari ini</b><p>Silakan buat booking baru sesuai jadwal yang tersedia.</p><button class="primary-btn" data-go="booking">Buat Booking</button></div>`;
       U.$('#content').innerHTML=`${bookingHtml}<div class="card" style="margin-top:16px">${this.queuePreview()}</div>`;
     },
@@ -264,13 +284,13 @@
       const st=String(b.payment_status||'UNPAID').toUpperCase();
       if(st==='PAID') return `<div class="card" style="margin-top:16px"><h3>Pembayaran</h3><p>Status: <b>${U.paymentLabel(st)}</b></p></div>`;
       const s=this.state.settings||{};
-      const qris=this.qrisImgUrl(s)?`<div style="margin-top:12px"><b>QRIS Statis</b><p style="color:var(--muted)">Silakan scan QRIS, lalu tunjukkan bukti pembayaran ke Operator.</p>${this.qrisImageHtml(s,'260px')}</div>`:'';
+      const qris=this.qrisAsset(s)?`<div style="margin-top:12px">${this.qrisLinkHtml(s,'customer')}</div>`:'';
       const tripay=String(s.payment_gateway_enabled).toLowerCase()==='true'?`<button class="primary-btn" data-action="tripayCustomer" data-id="${U.esc(b.booking_id)}" data-price="${U.esc(b.price||0)}">Bayar Online Tripay</button>`:'';
       return `<div class="card" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>Pembayaran</h2><span class="badge">${U.paymentLabel(st)}</span></div><p>Total tagihan: <b>${U.rupiah(b.price||0)}</b></p><div class="action-row">${tripay}</div>${qris}</div>`;
     },
     customerBooking(){
       this.setTitle('Booking Baru','Pilih layanan, lalu klik slot jam yang tersedia');
-      U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><form id="booking-form"><div class="form-grid"><label>Tanggal Booking<input type="date" name="booking_date" value="${U.today()}" required></label><label>Layanan<select name="service_id" required><option value="">Pilih layanan</option>${this.state.services.map(s=>`<option value="${s.service_id}">${U.esc(s.service_name)} · ${U.rupiah(s.price)} · ${s.duration_min} menit</option>`).join('')}</select><small>Setelah layanan dipilih, slot otomatis ditampilkan. Pelanggan cukup klik jam yang tersedia.</small></label><label class="span-2">Operator<select name="operator_id"><option value="ANY">Operator mana saja</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)} · Kursi ${U.esc(o.chair_no||'-')}</option>`).join('')}</select></label></div><div id="availability-result" style="margin-top:16px"><div class="empty-state"><b>Pilih layanan terlebih dahulu</b><p>Slot akan digenerate otomatis berdasarkan durasi layanan, jam kerja operator, dan booking yang sudah masuk.</p></div></div><button class="primary-btn full" type="submit" style="margin-top:16px">Konfirmasi Booking</button></form></div><div class="card">${this.queuePreview()}</div></div>`;
+      U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><form id="booking-form"><div class="form-grid"><label>Tanggal Booking<input type="date" name="booking_date" value="${U.today()}" required></label><label>Layanan<select name="service_id" required><option value="">Pilih layanan</option>${this.state.services.map(s=>`<option value="${s.service_id}">${U.esc(s.service_name)} · ${U.rupiah(s.price)} · ${s.duration_min} menit</option>`).join('')}</select><small>Setelah layanan dipilih, slot otomatis ditampilkan. Pelanggan cukup klik jam yang tersedia.</small></label><label class="span-2">Operator<select name="operator_id"><option value="ANY">Operator mana saja</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)} · Kursi ${U.esc(o.chair_no||'-')}</option>`).join('')}</select></label></div><div id="availability-result" style="margin-top:16px"><div class="empty-state"><b>Pilih layanan terlebih dahulu</b><p>Slot akan tampil berdasarkan durasi layanan, jam kerja operator, dan booking yang sudah masuk.</p></div></div><button class="primary-btn full" type="submit" style="margin-top:16px">Konfirmasi Booking</button></form></div><div class="card">${this.queuePreview()}</div></div>`;
     },
     queueLivePage(){ this.setTitle('Antrian Live','Pantau kapasitas dan status pelanggan yang sedang dilayani'); U.$('#content').innerHTML=`<div class="card">${this.queuePreview()}</div><div class="card" style="margin-top:16px">${this.queueTable()}</div>`; },
     queueTable(){
@@ -289,21 +309,21 @@
       return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${meta.rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row no-wrap-actions">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):''}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>${this.paginationControls(key,meta)}`;
     },
     adminBookings(){
-      this.setTitle('Manajemen Booking','Filter, pantau, dan update order pelanggan');
+      this.setTitle('Manajemen Booking','Order pelanggan');
       U.$('#content').innerHTML=`<div class="card"><div class="toolbar"><label>Tanggal<input id="filter-booking-date" type="date" value="${U.today()}"></label><label>Status<select id="filter-status"><option value="">Semua</option>${C.STATUS.map(s=>`<option value="${s}">${U.statusLabel(s)}</option>`).join('')}</select></label><label>Operator<select id="filter-operator"><option value="">Semua</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)}</option>`).join('')}</select></label><button class="primary-btn" id="btn-filter-bookings">Terapkan</button></div></div><div class="card" style="margin-top:16px">${this.todayBookingsTable(this.state.bookings,'adminBookings')}</div>`;
     },
     adminOperators(){
-      this.setTitle('Master Operator','Tambah dan kelola pemangkas/barber');
+      this.setTitle('Master Operator','Kelola pemangkas');
       U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><h3>Form Operator</h3><form id="operator-form"><input type="hidden" name="operator_id"><div class="form-grid"><label>Nama Operator<input name="operator_name" required></label><label>No HP<input name="phone" required></label><label>No Kursi<input name="chair_no" placeholder="1"></label><label>Kapasitas Harian<input name="daily_capacity" type="number" value="15"></label><label>Jam Mulai<input name="work_start" type="time" step="1" value="08:00"></label><label>Jam Selesai<input name="work_end" type="time" step="1" value="21:00"></label><label>Tipe Komisi<select name="commission_type"><option value="">Tidak ada</option><option value="PERCENT">Persen</option><option value="FIXED">Nominal</option></select></label><label>Nilai Komisi<input name="commission_value" type="number" value="0"></label><label class="span-2"><input type="checkbox" name="create_login" style="width:auto;margin-right:8px"> Buat/Update akun login operator</label><label class="span-2">Password Operator<input name="password" value="operator123"></label><label class="span-2">Catatan<textarea name="notes"></textarea></label></div><button class="primary-btn full">Simpan Operator</button></form></div><div class="card"><h3>Daftar Operator</h3>${this.operatorCards()}</div></div>`;
     },
     operatorCards(){ return `<div class="queue-list">${this.state.operators.map(o=>`<div class="queue-item"><div class="queue-no">${U.esc(o.chair_no||'-')}</div><div class="queue-main"><b>${U.esc(o.operator_name)}</b><span>${U.esc(o.phone)} · Kap ${U.esc(o.daily_capacity)} · ${U.esc(U.formatTime(o.work_start))}-${U.esc(U.formatTime(o.work_end))}</span></div><button class="ghost-btn mini" data-edit-operator='${JSON.stringify(o).replace(/'/g,'&#39;')}'>Edit</button></div>`).join('')||'<div class="empty-state"><b>Belum ada operator</b></div>'}</div>`; },
     adminServices(){
-      this.setTitle('Master Layanan','Atur jenis layanan, durasi, dan harga');
+      this.setTitle('Master Layanan','Jenis layanan, durasi, dan harga');
       U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><h3>Form Layanan</h3><form id="service-form"><input type="hidden" name="service_id"><label>Nama Layanan<input name="service_name" required></label><label>Durasi Menit<input type="number" name="duration_min" value="30" required></label><label>Harga<input type="number" name="price" value="25000" required></label><label>Deskripsi<textarea name="description"></textarea></label><button class="primary-btn full">Simpan Layanan</button></form></div><div class="card"><h3>Daftar Layanan</h3><div class="queue-list">${this.state.services.map(s=>`<div class="queue-item"><div class="queue-no">${U.esc(s.duration_min)}</div><div class="queue-main"><b>${U.esc(s.service_name)}</b><span>${U.rupiah(s.price)} · ${U.esc(s.description||'-')}</span></div><button class="ghost-btn mini" data-edit-service='${JSON.stringify(s).replace(/'/g,'&#39;')}'>Edit</button></div>`).join('')||'<div class="empty-state"><b>Belum ada layanan</b></div>'}</div></div></div>`;
     },
     adminSettings(){
       this.setTitle('Pengaturan Barbershop','Profil, jam operasional, payment gateway, dan QRIS statis'); const s=this.state.settings;
-      const qris=this.qrisImgUrl(s)?`<div class="span-2"><small>QRIS aktif:</small><br>${this.qrisImageHtml(s,'220px')}</div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
+      const qris=this.qrisAsset(s)?`<div class="span-2">${this.qrisLinkHtml(s,'admin')}</div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
       U.$('#content').innerHTML=`<div class="card"><form id="settings-form" class="form-grid">
         <label>Nama Barbershop<input name="barbershop_name" value="${U.esc(s.barbershop_name||'BarberBook')}"></label>
         <label>No WhatsApp<input name="whatsapp" value="${U.esc(s.whatsapp||s.contact_phone||'')}"></label>
@@ -382,7 +402,7 @@
       U.$$('[data-edit-service]').forEach(b=>b.onclick=()=>{const s=JSON.parse(b.getAttribute('data-edit-service')); const f=U.$('#service-form'); Object.keys(s).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(s[k]):s[k])}); window.scrollTo({top:0,behavior:'smooth'});});
       U.$$('[data-export="bookings"]').forEach(b=>b.onclick=()=>U.csvDownload('booking-barbershop.csv',this.state.bookings));
       U.$$('[data-read-notif]').forEach(b=>b.onclick=()=>this.markNotif(b.dataset.readNotif));
-      U.$$('.qris-img').forEach(img=>{ img.onerror=()=>{ const fb=img.dataset.fallbackSrc; if(fb && img.src!==fb) img.src=fb; }; });
+      // QRIS statis sengaja tidak dirender sebagai gambar otomatis agar loading halaman lebih ringan.
       U.$$('[data-page-key]').forEach(b=>b.onclick=()=>{ const st=this.getTableState(b.dataset.pageKey); st.page=Number(b.dataset.page||1); if(b.dataset.pageKey==='reportBookings') this.renderReportBookingsPage(); else this.render(false); });
       U.$$('[data-page-size-key]').forEach(sel=>sel.onchange=()=>{ const st=this.getTableState(sel.dataset.pageSizeKey); st.pageSize=Number(sel.value||20); st.page=1; if(sel.dataset.pageSizeKey==='reportBookings') this.renderReportBookingsPage(); else this.render(false); });
       const rp=U.$('#btn-load-report'); if(rp) rp.onclick=()=>this.loadReports();
@@ -452,6 +472,8 @@
         });
 
         if(r.qris_static_url) this.state.settings.qris_static_url = r.qris_static_url;
+        if(r.qris_static_view_url) this.state.settings.qris_static_view_url = r.qris_static_view_url;
+        if(r.qris_static_download_url) this.state.settings.qris_static_download_url = r.qris_static_download_url;
         if(r.file_id) this.state.settings.qris_static_file_id = r.file_id;
         U.toast('QRIS disimpan', r.message || 'QRIS statis berhasil diupload.', 'success');
         await this.refresh();
