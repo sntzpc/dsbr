@@ -336,3 +336,152 @@ function saveQrisStatic_(payload) {
   writeAuditLog_(user, 'SAVE_QRIS_STATIC', 'Settings', 'qris_static_url', null, url, 'Upload QRIS statis');
   return { status: APP_CONFIG.API_OK, message: 'QRIS statis berhasil diupload.', qris_static_url: url, file_id: file.getId() };
 }
+
+/**
+ * Upload QRIS via JSONP chunked.
+ * Dibuat khusus untuk Chrome Mobile agar gambar tidak dikirim sebagai 1 URL base64 panjang.
+ */
+function beginQrisUpload_(payload) {
+  var user = requireRole_(payload, USER_ROLES.ADMIN);
+
+  var totalChunks = Number(payload.total_chunks || 0);
+  var totalLength = Number(payload.total_length || 0);
+
+  if (!totalChunks || totalChunks < 1) {
+    throw new Error('Total chunk QRIS tidak valid.');
+  }
+
+  if (totalChunks > 140) {
+    throw new Error('File QRIS terlalu besar untuk upload mobile. Crop gambar QRIS lalu upload ulang.');
+  }
+
+  if (totalLength > 900 * 1024) {
+    throw new Error('Data QRIS terlalu besar setelah kompres. Crop gambar QRIS lalu upload ulang.');
+  }
+
+  var uploadId = 'QRIS-' + Utilities.getUuid();
+  var cache = CacheService.getScriptCache();
+
+  var meta = {
+    upload_id: uploadId,
+    user_id: user.user_id,
+    filename: sanitizeQrisFilename_(payload.filename || 'qris-statis.jpg'),
+    mime: String(payload.mime || 'image/jpeg'),
+    total_chunks: totalChunks,
+    total_length: totalLength,
+    created_at: now_()
+  };
+
+  cache.put(qrisCacheKey_(uploadId, 'meta'), JSON.stringify(meta), 21600);
+
+  return {
+    status: APP_CONFIG.API_OK,
+    message: 'Upload QRIS dimulai.',
+    upload_id: uploadId,
+    total_chunks: totalChunks
+  };
+}
+
+function appendQrisUploadChunk_(payload) {
+  var user = requireRole_(payload, USER_ROLES.ADMIN);
+
+  var uploadId = String(payload.upload_id || '').trim();
+  var index = Number(payload.index);
+  var chunk = String(payload.chunk || '');
+
+  if (!uploadId) throw new Error('upload_id QRIS kosong.');
+  if (isNaN(index) || index < 0) throw new Error('Index chunk QRIS tidak valid.');
+  if (!chunk) throw new Error('Chunk QRIS kosong.');
+
+  // Batas aman CacheService dan URL JSONP Chrome Mobile.
+  if (chunk.length > 15000) {
+    throw new Error('Chunk QRIS terlalu besar. Kecilkan QRIS_UPLOAD_CHUNK_SIZE di config.js menjadi 9000 atau lebih kecil.');
+  }
+
+  var cache = CacheService.getScriptCache();
+  var metaRaw = cache.get(qrisCacheKey_(uploadId, 'meta'));
+  if (!metaRaw) throw new Error('Sesi upload QRIS sudah kedaluwarsa. Ulangi upload.');
+
+  var meta = JSON.parse(metaRaw);
+  if (String(meta.user_id) !== String(user.user_id)) throw new Error('Upload QRIS tidak sesuai user.');
+  if (index >= Number(meta.total_chunks || 0)) throw new Error('Index chunk melebihi total chunk.');
+
+  cache.put(qrisCacheKey_(uploadId, 'chunk_' + index), chunk, 21600);
+
+  return {
+    status: APP_CONFIG.API_OK,
+    message: 'Chunk QRIS diterima.',
+    upload_id: uploadId,
+    index: index
+  };
+}
+
+function finishQrisUpload_(payload) {
+  var user = requireRole_(payload, USER_ROLES.ADMIN);
+  var uploadId = String(payload.upload_id || '').trim();
+  if (!uploadId) throw new Error('upload_id QRIS kosong.');
+
+  var cache = CacheService.getScriptCache();
+  var metaRaw = cache.get(qrisCacheKey_(uploadId, 'meta'));
+  if (!metaRaw) throw new Error('Sesi upload QRIS sudah kedaluwarsa. Ulangi upload.');
+
+  var meta = JSON.parse(metaRaw);
+  if (String(meta.user_id) !== String(user.user_id)) throw new Error('Upload QRIS tidak sesuai user.');
+
+  var totalChunks = Number(meta.total_chunks || 0);
+  var base64 = '';
+
+  for (var i = 0; i < totalChunks; i++) {
+    var part = cache.get(qrisCacheKey_(uploadId, 'chunk_' + i));
+    if (!part) {
+      throw new Error('Chunk QRIS belum lengkap. Hilang pada bagian ke-' + (i + 1) + '. Ulangi upload.');
+    }
+    base64 += part;
+  }
+
+  if (base64.length !== Number(meta.total_length || 0)) {
+    throw new Error('Data QRIS tidak lengkap. Ulangi upload.');
+  }
+
+  var mime = String(meta.mime || payload.mime || 'image/jpeg');
+  if (!/^image\/(png|jpeg|jpg|webp)$/i.test(mime)) mime = 'image/jpeg';
+
+  var filename = sanitizeQrisFilename_(meta.filename || payload.filename || 'qris-statis.jpg');
+  var bytes = Utilities.base64Decode(base64);
+
+  if (bytes.length > 900 * 1024) {
+    throw new Error('Ukuran QRIS setelah diproses masih terlalu besar. Crop gambar QRIS lalu upload ulang.');
+  }
+
+  var blob = Utilities.newBlob(bytes, mime, filename);
+  var file = DriveApp.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  var url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+
+  upsertSetting_('qris_static_file_id', file.getId(), 'File ID QRIS statis di Drive', user.user_id);
+  upsertSetting_('qris_static_url', url, 'URL publik QRIS statis', user.user_id);
+
+  writeAuditLog_(user, 'SAVE_QRIS_STATIC_CHUNKED', 'Settings', 'qris_static_url', null, url, 'Upload QRIS statis via chunk JSONP Chrome Mobile');
+
+  return {
+    status: APP_CONFIG.API_OK,
+    message: 'QRIS statis berhasil diupload.',
+    qris_static_url: url,
+    file_id: file.getId()
+  };
+}
+
+function qrisCacheKey_(uploadId, part) {
+  return 'barber_qris_' + uploadId + '_' + part;
+}
+
+function sanitizeQrisFilename_(filename) {
+  filename = String(filename || 'qris-statis.jpg')
+    .replace(/[\\/:*?"<>|#%{}~&]/g, '-')
+    .replace(/\s+/g, '-')
+    .substring(0, 80);
+
+  if (!/\.(jpg|jpeg|png|webp)$/i.test(filename)) filename += '.jpg';
+  return filename;
+}

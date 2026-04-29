@@ -21,16 +21,30 @@ function parsePayload_(e, method) {
       payload = JSON.parse(raw);
       payload._raw_post = raw;
     } catch (err) {
-      payload = e.parameter || {};
+      payload = Object.assign({}, e.parameter || {});
       payload.raw = raw;
       payload._raw_post = raw;
     }
   } else if (e && e.parameter) {
     payload = Object.assign({}, e.parameter);
-    if (payload.payload) {
-      try {
-        payload = Object.assign(payload, JSON.parse(payload.payload));
-      } catch (err) {}
+  }
+
+  // Payload standar untuk JSONP lama: ?action=x&payload={...}
+  if (payload.payload) {
+    try {
+      payload = Object.assign(payload, JSON.parse(payload.payload));
+    } catch (err) {}
+  }
+
+  // Payload baru untuk Chrome Mobile: hidden iframe POST bridge.
+  // Data dikirim sebagai form field payload_json agar tidak terkena CORS/preflight
+  // dan tidak bergantung pada URL googleusercontent yang bisa berubah.
+  if (payload.payload_json) {
+    try {
+      var bridgePayload = JSON.parse(String(payload.payload_json || '{}'));
+      payload = Object.assign(payload, bridgePayload);
+    } catch (err) {
+      throw new Error('payload_json tidak valid: ' + err.message);
     }
   }
   Object.keys(payload || {}).forEach(function(k) {
@@ -42,6 +56,33 @@ function parsePayload_(e, method) {
     }
   });
   return payload || {};
+}
+
+
+/**
+ * Response khusus untuk hidden iframe POST bridge.
+ * Dibuat agar Chrome Mobile tidak tergantung CORS, JSONP, atau base URL googleusercontent.
+ */
+function apiBridgeResponse_(data, requestId) {
+  const output = data && data.status ? data : Object.assign({ status: APP_CONFIG.API_OK }, data || {});
+  const safeJson = JSON.stringify(output)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+  const safeRequestId = JSON.stringify(String(requestId || ''));
+  const html = '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>' +
+    '(function(){' +
+    'var msg={source:"BARBERBOOK_GAS_BRIDGE",requestId:' + safeRequestId + ',payload:' + safeJson + '};' +
+    'try{(window.parent||window.top).postMessage(msg,"*");}catch(e){}' +
+    '})();' +
+    '</script></body></html>';
+
+  var out = HtmlService.createHtmlOutput(html);
+  try { out.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); } catch (err) {}
+  return out;
 }
 
 function apiResponse_(data, callback) {

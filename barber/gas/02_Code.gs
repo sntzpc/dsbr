@@ -11,23 +11,33 @@ function doPost(e) {
 }
 
 function handleRequest_(e, method) {
+  var payload = {};
+  var bridgeMode = false;
+  var bridgeRequestId = '';
+
   try {
-    const payload = parsePayload_(e, method);
+    payload = parsePayload_(e, method);
+    bridgeMode = String(payload.bb_bridge || payload.bridge || '') === '1';
+    bridgeRequestId = String(payload.bb_request_id || payload.request_id || '');
+
     const action = String(payload.action || '').trim();
     if (!action && method === 'POST' && (payload.merchant_ref || payload.reference || payload.status)) {
       const result = processTripayCallback_(payload, e);
-      return apiResponse_(result, payload.callback);
+      return bridgeMode ? apiBridgeResponse_(result, bridgeRequestId) : apiResponse_(result, payload.callback);
     }
     if (!action) throw new Error('Missing action');
 
     const result = routeAction_(action, payload, e);
-    return apiResponse_(result, payload.callback);
+    return bridgeMode ? apiBridgeResponse_(result, bridgeRequestId) : apiResponse_(result, payload.callback);
   } catch (err) {
-    return apiResponse_({
+    var errorPayload = {
       status: APP_CONFIG.API_ERROR,
       message: err.message || String(err),
       stack: APP_CONFIG.DEBUG ? err.stack : undefined
-    }, e && e.parameter ? e.parameter.callback : null);
+    };
+    return bridgeMode
+      ? apiBridgeResponse_(errorPayload, bridgeRequestId)
+      : apiResponse_(errorPayload, e && e.parameter ? e.parameter.callback : null);
   }
 }
 

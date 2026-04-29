@@ -98,13 +98,14 @@
         image.src = originalDataUrl;
       });
 
-      const maxSide = 900;
+      // QRIS tetap jelas, tetapi dibuat cukup kecil agar aman dikirim via JSONP Chrome Mobile.
+      const maxSide = 720;
       let w = img.width || maxSide;
       let h = img.height || maxSide;
       const scale = Math.min(1, maxSide / Math.max(w, h));
 
-      w = Math.max(240, Math.round(w * scale));
-      h = Math.max(240, Math.round(h * scale));
+      w = Math.max(260, Math.round(w * scale));
+      h = Math.max(260, Math.round(h * scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = w;
@@ -113,14 +114,31 @@
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, w, h);
 
       let quality = 0.82;
       let out = canvas.toDataURL('image/jpeg', quality);
 
-      while(out.length > 650000 && quality > 0.45) {
+      // Target sekitar < 420 KB agar jumlah chunk tidak terlalu banyak dan URL tidak kepanjangan.
+      while(out.length > 420000 && quality > 0.42) {
         quality -= 0.08;
         out = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      if(out.length > 520000) {
+        const small = document.createElement('canvas');
+        const ratio = Math.min(1, 560 / Math.max(w, h));
+        small.width = Math.max(240, Math.round(w * ratio));
+        small.height = Math.max(240, Math.round(h * ratio));
+        const sctx = small.getContext('2d');
+        sctx.fillStyle = '#ffffff';
+        sctx.fillRect(0, 0, small.width, small.height);
+        sctx.imageSmoothingEnabled = true;
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(canvas, 0, 0, small.width, small.height);
+        out = small.toDataURL('image/jpeg', 0.72);
       }
 
       return out;
