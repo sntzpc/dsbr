@@ -42,3 +42,44 @@ html[data-theme="dark"]{
 .qris-link-box p{margin:4px 0 0;color:var(--muted);font-size:13px;max-width:640px;}
 .qris-link-box a{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;}
 @media(max-width:680px){.qris-link-box{align-items:flex-start}.qris-link-box .action-row{width:100%;overflow-x:auto;}}
+
+/* PATCH 2026-04-29: mobile containment fix - kartu tidak meledak keluar layar HP */
+html,body{max-width:100%;overflow-x:hidden;}
+.app-shell,.content-area,.content,.grid,.grid>*,.card,.section-title,.queue-list,.queue-item,.queue-main,.toolbar,.form-grid,.topbar{min-width:0;max-width:100%;}
+.content{width:100%;}
+.card{overflow:hidden;}
+.section-title{flex-wrap:wrap;}
+.section-title .badge{max-width:100%;}
+.badge{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stat-card b,.stat-card span,.stat-card small,.card h3,.topbar h1,.topbar p{max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.stat-card b,.card h3,.topbar h1{white-space:nowrap;}
+.queue-list{overflow-x:visible!important;}
+.queue-item{width:100%;min-width:0!important;max-width:100%;}
+.queue-no{flex:0 0 54px;}
+.queue-main{min-width:0;max-width:100%;overflow:hidden;}
+.queue-main b,.queue-main span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.queue-item>.action-row{flex:0 1 auto;min-width:0;max-width:100%;justify-content:flex-end;}
+.action-row{min-width:0;max-width:100%;}
+.toolbar{overflow:hidden;}
+.table-wrap{max-width:100%;}
+input,select,textarea,button{max-width:100%;}
+
+@media(max-width:680px){
+  .content{padding:12px;}
+  .card{padding:14px;border-radius:20px;}
+  .grid{gap:12px;}
+  .section-title{align-items:flex-start;gap:8px;margin:18px 0 10px;}
+  .section-title h2{font-size:19px;min-width:0;max-width:100%;}
+  .stat-card b{font-size:28px;}
+  .queue-item{display:grid;grid-template-columns:48px minmax(0,1fr);align-items:start;gap:10px;padding:12px;border-radius:16px;}
+  .queue-no{width:48px;height:48px;border-radius:16px;font-size:16px;}
+  .queue-main{align-self:center;}
+  .queue-item>.action-row{grid-column:1/-1;width:100%;justify-content:flex-start;flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
+  .queue-item>.action-row button{flex:0 0 auto;}
+  .queue-main b{font-size:14px;}
+  .queue-main span{font-size:12px;}
+  .topbar{overflow:hidden;}
+  .topbar>div:first-child{min-width:0;}
+  .user-chip{max-width:44px;overflow:hidden;padding:6px;}
+  .qris-link-box{max-width:100%;overflow:hidden;}
+}
