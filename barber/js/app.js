@@ -301,12 +301,39 @@
     customerHistory(){ this.setTitle('Riwayat Booking','Semua booking milik pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'customerHistoryBookings')}</div>`; },
     operatorQueue(){ this.setTitle('Antrian Saya','Panggil, mulai, dan selesaikan order pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.operatorActionList(this.state.bookings)}</div>`; },
     operatorHistory(){ this.setTitle('Riwayat Layanan','Order operator hari ini dan riwayat status'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'operatorHistoryBookings')}</div>`; },
-    operatorActionList(rows){ return `<h3>Order Hari Ini</h3><div class="queue-list">${rows.length?rows.map(b=>`<div class="queue-item"><div class="queue-no">${U.esc(b.queue_no)}</div><div class="queue-main"><b>${U.esc(b.customer_name)} · ${U.esc(b.service_name)}</b><span>${U.esc(U.formatTime(b.slot_time))} · ${U.statusLabel(b.status)} · ${U.paymentLabel(b.payment_status)}</span></div><div class="action-row">${this.operatorButtons(b)}</div></div>`).join(''):'<div class="empty-state"><b>Belum ada order</b><p>Order baru akan tampil otomatis.</p></div>'}</div>`; },
-    operatorButtons(b){ const id=U.esc(b.booking_id); return `<button class="ghost-btn mini" data-action="call" data-id="${id}">Panggil</button><button class="success-btn mini" data-action="start" data-id="${id}">Mulai</button><button class="primary-btn mini" data-action="finish" data-id="${id}">Selesai</button><button class="warning-btn mini" data-action="payment" data-id="${id}" data-price="${b.price}">Bayar</button><button class="danger-btn mini" data-action="noshow" data-id="${id}">No Show</button>`; },
+    operatorActionList(rows){ return `<h3>Order Hari Ini</h3><div class="queue-list">${rows.length?rows.map(b=>`<div class="queue-item status-${U.esc(String(b.status||'').toLowerCase())}"><div class="queue-no">${U.esc(b.queue_no)}</div><div class="queue-main"><b>${U.esc(b.customer_name)} · ${U.esc(b.service_name)}</b><span>${U.esc(U.formatTime(b.slot_time))} · ${U.statusLabel(b.status)} · ${U.paymentLabel(b.payment_status)}</span><small class="operator-hint">${this.operatorFlowHint(b)}</small></div><div class="action-row operator-actions">${this.operatorButtons(b)}</div></div>`).join(''):'<div class="empty-state"><b>Belum ada order</b><p>Order baru akan tampil otomatis.</p></div>'}</div>`; },
+    operatorFlowHint(b){
+      const st=String(b.status||'').toUpperCase();
+      const pay=String(b.payment_status||'UNPAID').toUpperCase();
+      if(st==='NO_SHOW') return 'Pelanggan tidak hadir. Semua aksi dikunci, pelanggan harus booking ulang.';
+      if(st==='CANCELLED') return 'Booking dibatalkan.';
+      if(st==='BOOKED' || st==='CHECKED_IN') return 'Aksi aktif: Panggil atau No Show.';
+      if(st==='CALLED') return 'Aksi aktif: Mulai atau No Show.';
+      if(st==='IN_SERVICE') return 'Aksi aktif: Selesai.';
+      if(st==='FINISHED' && pay!=='PAID') return 'Aksi aktif: Bayar.';
+      if(st==='FINISHED' && pay==='PAID') return 'Transaksi selesai dan lunas. Struk dapat dicetak.';
+      return '';
+    },
+    operatorButtons(b){
+      const id=U.esc(b.booking_id);
+      const st=String(b.status||'').toUpperCase();
+      const pay=String(b.payment_status||'UNPAID').toUpperCase();
+      const active={
+        call: st==='BOOKED' || st==='CHECKED_IN',
+        start: st==='CALLED',
+        finish: st==='IN_SERVICE',
+        payment: st==='FINISHED' && pay!=='PAID',
+        noshow: st==='BOOKED' || st==='CHECKED_IN' || st==='CALLED',
+        receipt: st==='FINISHED'
+      };
+      const dis=k=>active[k]?'':' disabled aria-disabled="true"';
+      const price=U.esc(b.price||0);
+      return `<button class="ghost-btn mini" data-action="call" data-id="${id}"${dis('call')}>Panggil</button><button class="success-btn mini" data-action="start" data-id="${id}"${dis('start')}>Mulai</button><button class="primary-btn mini" data-action="finish" data-id="${id}"${dis('finish')}>Selesai</button><button class="warning-btn mini" data-action="payment" data-id="${id}" data-price="${price}"${dis('payment')}>Bayar</button><button class="danger-btn mini" data-action="noshow" data-id="${id}"${dis('noshow')}>No Show</button><button class="ghost-btn mini" data-action="receipt" data-id="${id}"${dis('receipt')}>Struk</button>`;
+    },
     todayBookingsTable(rows,key='bookingsTable'){
       const sorted=this.sortNewestRows(rows||[]);
       const meta=this.paginate(key,sorted);
-      return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${meta.rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row no-wrap-actions">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):''}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>${this.paginationControls(key,meta)}`;
+      return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${meta.rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row no-wrap-actions">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):(String(b.status||'').toUpperCase()==='FINISHED'?`<button class="ghost-btn mini" data-action="receipt" data-id="${U.esc(b.booking_id)}">Struk</button>`:'')}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>${this.paginationControls(key,meta)}`;
     },
     adminBookings(){
       this.setTitle('Manajemen Booking','Order pelanggan');
@@ -414,18 +441,73 @@
       finally{this.loading(false)}
     },
     async handleAction(action,id,btn){
-      const map={call:'callCustomer',start:'startService',finish:'finishService',noshow:'markNoShow',checkIn:'checkInBooking'};
+      if(btn && btn.disabled) return;
+      const map={call:'callCustomer',start:'startService',finish:'finishService',checkIn:'checkInBooking'};
       if(action==='cancelBooking'){ const ok=await U.confirm('Batalkan Booking','Booking akan dibatalkan. Lanjutkan?'); if(!ok)return; return this.runBookingAction('cancelBooking',{booking_id:id,cancel_reason:'Dibatalkan pengguna'}); }
+      if(action==='noshow'){ const ok=await U.confirm('Tandai No Show','Pelanggan akan ditandai tidak hadir. Setelah No Show, semua tombol dikunci dan pelanggan harus booking ulang dari awal. Lanjutkan?'); if(!ok)return; return this.runBookingAction('markNoShow',{booking_id:id}); }
       if(action==='payment') return this.paymentModal(id, btn.dataset.price);
+      if(action==='receipt') return this.receiptModal(id);
       if(action==='tripayCustomer') return this.createTripayInvoice(id, btn.dataset.price);
       if(map[action]) return this.runBookingAction(map[action],{booking_id:id});
     },
-    async runBookingAction(apiAction,payload){ try{ this.loading(true,'Memproses...'); const r=await this.api(apiAction,payload); U.toast('Berhasil',r.message||'Data diperbarui.','success'); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')}finally{this.loading(false)} },
+    async runBookingAction(apiAction,payload){ try{ this.loading(true,'Memproses...'); const r=await this.api(apiAction,payload); U.toast('Berhasil',r.message||'Data diperbarui.','success'); await this.refresh(); return r; }catch(err){U.toast('Gagal',err.message,'error'); return null;}finally{this.loading(false)} },
     paymentModal(id,price){
+      const booking=this.getBookingById(id)||{};
       const tripayOn=String(this.state.settings.payment_gateway_enabled).toLowerCase()==='true';
-      U.modal('Input Pembayaran',`<form id="payment-form"><label>Nominal<input name="amount" type="number" value="${price||0}" required></label><label>Metode<select name="method"><option>CASH</option><option>QRIS_STATIS</option><option>TRANSFER</option></select></label><label>Status<select name="status"><option value="PAID">Lunas</option><option value="PARTIAL">Sebagian</option></select></label><label>Catatan<textarea name="notes"></textarea></label><button class="primary-btn full">Simpan Pembayaran Manual</button></form>${tripayOn?`<hr style="border:none;border-top:1px solid var(--border);margin:16px 0"><button class="warning-btn full" id="btn-create-tripay">Buat Invoice Tripay</button>`:''}`);
-      U.$('#payment-form').onsubmit=async e=>{e.preventDefault(); const data=U.serialize(e.target); data.booking_id=id; U.closeModal(); await this.runBookingAction('createPayment',data);};
+      U.modal('Input Pembayaran',`<form id="payment-form"><div class="receipt-mini"><b>Transaksi</b><span>No. Antrian ${U.esc(booking.queue_no||'-')} · ${U.esc(booking.customer_name||'-')}</span><span>${U.esc(booking.service_name||'-')} · ${U.rupiah(price||booking.price||0)}</span></div><label>Nominal<input name="amount" type="number" value="${price||booking.price||0}" required></label><label>Metode<select name="method"><option>CASH</option><option>QRIS_STATIS</option><option>TRANSFER</option></select></label><label>Status<select name="status"><option value="PAID">Lunas</option><option value="PARTIAL">Sebagian</option></select></label><label>Catatan<textarea name="notes"></textarea></label><div class="action-row no-wrap-actions"><button class="primary-btn" type="submit">Simpan Pembayaran Manual</button><button class="ghost-btn" type="button" id="btn-print-receipt-preview">Cetak Struk</button></div><small>Struk format thermal 58 mm. Saat dialog print muncul, pilih printer thermal atau Simpan sebagai PDF.</small></form>${tripayOn?`<hr style="border:none;border-top:1px solid var(--border);margin:16px 0"><button class="warning-btn full" id="btn-create-tripay">Buat Invoice Tripay</button>`:''}`);
+      U.$('#payment-form').onsubmit=async e=>{e.preventDefault(); const data=U.serialize(e.target); data.booking_id=id; U.closeModal(); const r=await this.runBookingAction('createPayment',data); if(r) this.receiptModal(id, Object.assign({},data,{payment_id:r.payment&&r.payment.payment_id,payment_date:r.payment&&r.payment.payment_date}));};
+      const pr=U.$('#btn-print-receipt-preview'); if(pr) pr.onclick=()=>{ const f=U.$('#payment-form'); const data=U.serialize(f); this.printReceipt(id,data); };
       const bt=U.$('#btn-create-tripay'); if(bt) bt.onclick=()=>{U.closeModal(); this.createTripayInvoice(id,price);};
+    },
+    getBookingById(id){
+      const all=[...(this.state.bookings||[])];
+      const dash=this.state.dashboard||{};
+      if(dash.active_booking) all.push(dash.active_booking);
+      return all.find(x=>String(x.booking_id)===String(id))||null;
+    },
+    receiptData(id, paymentData={}){
+      const b=this.getBookingById(id)||{};
+      const s=this.state.settings||{};
+      const paid=Number(paymentData.amount||b.price||0);
+      return {
+        shop:s.barbershop_name||'Barbershop',
+        address:s.address||'',
+        phone:s.whatsapp||s.contact_phone||'',
+        booking_id:b.booking_id||id,
+        queue_no:b.queue_no||'-',
+        customer_name:b.customer_name||'-',
+        customer_phone:b.customer_phone||'-',
+        service_name:b.service_name||'-',
+        operator_name:b.operator_name||'-',
+        chair_no:b.chair_no||'-',
+        booking_date:U.formatDate(b.booking_date)||'-',
+        slot_time:U.formatTime(b.slot_time)||'-',
+        finished_at:U.dateTime(b.finished_at)||U.nowDisplay(),
+        price:Number(b.price||paymentData.amount||0),
+        amount:paid,
+        method:paymentData.method||'MANUAL',
+        status:paymentData.status||b.payment_status||'PAID',
+        notes:paymentData.notes||'',
+        payment_id:paymentData.payment_id||'',
+        payment_date:U.dateTime(paymentData.payment_date)||U.nowDisplay()
+      };
+    },
+    receiptHtml(id, paymentData={}){
+      const r=this.receiptData(id,paymentData);
+      return `<div class="receipt-58"><div class="receipt-center"><h1>${U.esc(r.shop)}</h1>${r.address?`<p>${U.esc(r.address)}</p>`:''}${r.phone?`<p>WA: ${U.esc(r.phone)}</p>`:''}</div><hr><div class="receipt-row"><span>No Antrian</span><b>${U.esc(r.queue_no)}</b></div><div class="receipt-row"><span>Tanggal</span><b>${U.esc(r.payment_date)}</b></div><div class="receipt-row"><span>Pelanggan</span><b>${U.esc(r.customer_name)}</b></div><div class="receipt-row"><span>Operator</span><b>${U.esc(r.operator_name)}</b></div><hr><div class="receipt-item"><b>${U.esc(r.service_name)}</b><span>${U.rupiah(r.price)}</span></div><hr><div class="receipt-row total"><span>Total</span><b>${U.rupiah(r.price)}</b></div><div class="receipt-row"><span>Dibayar</span><b>${U.rupiah(r.amount)}</b></div><div class="receipt-row"><span>Metode</span><b>${U.esc(r.method)}</b></div><div class="receipt-row"><span>Status</span><b>${U.paymentLabel(r.status)}</b></div>${r.notes?`<p class="receipt-notes">Catatan: ${U.esc(r.notes)}</p>`:''}<hr><div class="receipt-center"><p>Terima kasih atas kunjungan Anda.</p><p>Simpan struk ini sebagai bukti transaksi.</p></div></div>`;
+    },
+    receiptModal(id,paymentData={}){
+      U.modal('Struk Pembayaran',`<div class="receipt-modal-wrap">${this.receiptHtml(id,paymentData)}</div><div class="action-row no-wrap-actions" style="margin-top:14px"><button class="primary-btn" id="btn-print-receipt">Cetak / Simpan PDF</button><button class="ghost-btn" id="btn-close-receipt">Tutup</button></div><small>Untuk PDF, pilih printer tujuan “Save as PDF” / “Simpan sebagai PDF”. Untuk thermal, pilih printer 58 mm yang sudah terhubung.</small>`);
+      const p=U.$('#btn-print-receipt'); if(p) p.onclick=()=>this.printReceipt(id,paymentData);
+      const c=U.$('#btn-close-receipt'); if(c) c.onclick=()=>U.closeModal();
+    },
+    printReceipt(id,paymentData={}){
+      const html=this.receiptHtml(id,paymentData);
+      const w=window.open('','_blank','width=380,height=720');
+      if(!w){ U.toast('Popup diblokir','Izinkan popup untuk mencetak struk.','error'); return; }
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Struk</title><style>@page{size:58mm auto;margin:3mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}.receipt-58{width:52mm;margin:0 auto;font-size:10px;line-height:1.25}.receipt-center{text-align:center}.receipt-center h1{font-size:14px;margin:0 0 3px;text-transform:uppercase}.receipt-center p{margin:2px 0}.receipt-row{display:flex;justify-content:space-between;gap:6px;margin:3px 0}.receipt-row span:first-child{color:#333}.receipt-row b{text-align:right}.receipt-row.total{font-size:12px}.receipt-item{display:flex;justify-content:space-between;gap:6px;margin:5px 0}.receipt-notes{margin:5px 0}hr{border:0;border-top:1px dashed #000;margin:6px 0}@media print{body{width:58mm}.receipt-58{width:52mm}}</style></head><body>${html}<script>window.onload=function(){setTimeout(function(){window.print();},250)}</script></body></html>`);
+      w.document.close();
     },
     async createTripayInvoice(id, price){
       try{

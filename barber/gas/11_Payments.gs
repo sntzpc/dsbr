@@ -14,6 +14,8 @@ function createPayment_(payload) {
   const booking = findOneByField_('Bookings', 'booking_id', payload.booking_id);
   if (!booking) throw new Error('Booking tidak ditemukan.');
   if (user.role === USER_ROLES.OPERATOR && String(booking.operator_id) !== String(user.operator_id)) throw new Error('Operator hanya bisa input pembayaran order sendiri.');
+  if (String(booking.status) !== BOOKING_STATUS.FINISHED) throw new Error('Pembayaran manual hanya bisa dicatat setelah layanan selesai.');
+  if (String(booking.payment_status || '').toUpperCase() === PAYMENT_STATUS.PAID && !payload.allow_overpay) throw new Error('Booking ini sudah lunas.');
 
   const payment = appendObject_('Payments', {
     payment_id: makeId_('PAY'),

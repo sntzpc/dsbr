@@ -33,7 +33,7 @@ function startService_(payload) {
   const user = requireRole_(payload, [USER_ROLES.ADMIN, USER_ROLES.OPERATOR]);
   requireFields_(payload, ['booking_id']);
   const booking = assertBookingAccess_(user, payload.booking_id);
-  if ([BOOKING_STATUS.CALLED, BOOKING_STATUS.CHECKED_IN, BOOKING_STATUS.BOOKED].indexOf(String(booking.status)) === -1) throw new Error('Layanan tidak bisa dimulai dari status: ' + booking.status);
+  if (String(booking.status) !== BOOKING_STATUS.CALLED) throw new Error('Layanan hanya bisa dimulai setelah pelanggan dipanggil.');
   const updated = updateRowById_('Bookings', 'booking_id', booking.booking_id, {
     status: BOOKING_STATUS.IN_SERVICE,
     started_at: now_(),
@@ -67,7 +67,7 @@ function markNoShow_(payload) {
   const user = requireRole_(payload, [USER_ROLES.ADMIN, USER_ROLES.OPERATOR]);
   requireFields_(payload, ['booking_id']);
   const booking = assertBookingAccess_(user, payload.booking_id);
-  if ([BOOKING_STATUS.FINISHED, BOOKING_STATUS.CANCELLED].indexOf(String(booking.status)) >= 0) throw new Error('Booking tidak bisa ditandai no-show.');
+  if ([BOOKING_STATUS.BOOKED, BOOKING_STATUS.CHECKED_IN, BOOKING_STATUS.CALLED].indexOf(String(booking.status)) === -1) throw new Error('No Show hanya bisa dilakukan sebelum layanan dimulai. Jika pelanggan sudah No Show, pelanggan wajib booking ulang.');
   const updated = updateRowById_('Bookings', 'booking_id', booking.booking_id, {
     status: BOOKING_STATUS.NO_SHOW,
     no_show_at: now_(),

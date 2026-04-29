@@ -83,3 +83,21 @@ input,select,textarea,button{max-width:100%;}
   .user-chip{max-width:44px;overflow:hidden;padding:6px;}
   .qris-link-box{max-width:100%;overflow:hidden;}
 }
+
+/* PATCH 2026-04-29: validasi tombol operator + struk thermal 58mm */
+button:disabled,
+button[aria-disabled="true"]{
+  opacity:.42;
+  cursor:not-allowed;
+  filter:grayscale(.25);
+  pointer-events:none;
+}
+.operator-actions{gap:6px;align-items:center;}
+.operator-hint{display:block;margin-top:4px;color:var(--muted);white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
+.receipt-mini{border:1px dashed var(--border);border-radius:14px;padding:10px;margin-bottom:12px;display:grid;gap:3px;background:var(--soft)}
+.receipt-mini span{color:var(--muted);font-size:12px;white-space:normal;overflow-wrap:anywhere;}
+.receipt-modal-wrap{max-height:58vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:12px;background:#fff;color:#111;}
+.receipt-58{width:58mm;max-width:100%;margin:0 auto;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.28;padding:4mm;box-shadow:0 10px 24px rgba(15,23,42,.12)}
+.receipt-center{text-align:center}.receipt-center h1{font-size:15px;line-height:1.1;margin:0 0 4px;text-transform:uppercase}.receipt-center p{margin:2px 0}.receipt-row{display:flex;justify-content:space-between;gap:8px;margin:4px 0}.receipt-row span:first-child{color:#333}.receipt-row b{text-align:right}.receipt-row.total{font-size:13px}.receipt-item{display:flex;justify-content:space-between;gap:8px;margin:6px 0}.receipt-notes{margin:6px 0}.receipt-58 hr{border:0;border-top:1px dashed #111;margin:7px 0}
+@media(max-width:680px){.operator-actions{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;padding-bottom:2px}.operator-actions .mini{flex:0 0 auto}.receipt-modal-wrap{max-height:55vh}.receipt-58{width:54mm;font-size:10px;padding:3mm}}
+@media print{.receipt-58{width:52mm;box-shadow:none;padding:0}.receipt-modal-wrap{border:0;max-height:none;overflow:visible}}
