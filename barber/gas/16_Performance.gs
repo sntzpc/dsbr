@@ -9,7 +9,7 @@ function getAppSnapshot_(payload) {
   const includeNotifications = payload.include_notifications === true || String(payload.include_notifications) === 'true';
   const includeHistory = payload.include_history === true || String(payload.include_history) === 'true' || page === 'history';
 
-  const settingsRes = getSettings_(payload);
+  const settingsRes = getSettingsSnapshotForUser_(user);
   const operators = getRowsAsObjects_('Operators').filter(function(o) { return bool_(o.active); }).map(cleanRow_);
   const services = getRowsAsObjects_('Services').filter(function(s) { return bool_(s.active); }).map(cleanRow_);
   const notifInfo = getNotificationSnapshotForUser_(user.user_id, includeNotifications, 20);
@@ -120,4 +120,22 @@ function sortBookingsNewestFirst_(a, b) {
   if (bd > ad) return 1;
   if (bd < ad) return -1;
   return number_(b.queue_no) - number_(a.queue_no);
+}
+
+
+function getSettingsSnapshotForUser_(user) {
+  const rows = getRowsAsObjects_('Settings');
+  const settings = {};
+  rows.forEach(function(r) { settings[r.key] = r.value; });
+  normalizeQrisSettings_(settings);
+  if (!user || user.role !== USER_ROLES.ADMIN) {
+    ['tripay_api_key', 'tripay_private_key', 'tripay_merchant_code'].forEach(function(k) { delete settings[k]; });
+    return { status: APP_CONFIG.API_OK, settings: settings, rows: [] };
+  }
+  const safeRows = rows.map(function(r) {
+    const c = cleanRow_(r);
+    if (c.key === 'tripay_api_key' || c.key === 'tripay_private_key') c.value_masked = maskSecret_(c.value);
+    return c;
+  });
+  return { status: APP_CONFIG.API_OK, settings: settings, rows: safeRows };
 }

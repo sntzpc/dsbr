@@ -84,8 +84,24 @@ function requireAuth_(payload) {
 
   const user = findOneByField_('Users', 'user_id', session.user_id);
   if (!user || !bool_(user.active)) throw new Error('User tidak aktif.');
-  updateRowById_('Sessions', 'session_id', session.session_id, { last_seen_at: now_() });
+
+  // PATCH LATENSI 2026-04-29:
+  // Dulu setiap request baca data ikut menulis last_seen_at ke sheet Sessions.
+  // Operasi tulis Google Sheets jauh lebih lambat daripada baca dan membuat snapshot/polling terasa berat.
+  // Sekarang last_seen di-update hanya untuk aksi mutasi atau jika sudah lewat ±10 menit.
+  if (shouldTouchSession_(payload, session)) {
+    updateRowById_('Sessions', 'session_id', session.session_id, { last_seen_at: now_() });
+  }
   return user;
+}
+
+function shouldTouchSession_(payload, session) {
+  const action = String(payload && payload.action || '');
+  const readOnly = /^(get|list|ping|diagnose)/i.test(action) || action === 'getAppSnapshot';
+  if (!readOnly) return true;
+  const last = parseDateTimeValue_(session.last_seen_at);
+  if (!last) return true;
+  return (new Date().getTime() - last.getTime()) > (10 * 60 * 1000);
 }
 
 function requireRole_(payload, roles) {

@@ -1,3 +1,5 @@
+var __BB_LATENCY_CACHE__ = { headers: {}, rows: {} };
+
 /**
  * 04_Utils.gs
  * Helper umum database, response, waktu WIB, validasi, dan ID.
@@ -188,24 +190,38 @@ function getSheet_(sheetName) {
 }
 
 function getHeaders_(sheetName) {
+  if (__BB_LATENCY_CACHE__.headers[sheetName]) return __BB_LATENCY_CACHE__.headers[sheetName].slice();
   const sheet = getSheet_(sheetName);
   const lastCol = sheet.getLastColumn();
   if (lastCol < 1) return [];
-  return sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || '').trim(); });
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || '').trim(); });
+  __BB_LATENCY_CACHE__.headers[sheetName] = headers.slice();
+  return headers;
+}
+
+function clearSheetCache_(sheetName) {
+  if (!sheetName) { __BB_LATENCY_CACHE__ = { headers: {}, rows: {} }; return; }
+  delete __BB_LATENCY_CACHE__.headers[sheetName];
+  delete __BB_LATENCY_CACHE__.rows[sheetName];
 }
 
 function getRowsAsObjects_(sheetName) {
+  if (__BB_LATENCY_CACHE__.rows[sheetName]) {
+    return __BB_LATENCY_CACHE__.rows[sheetName].map(function(r) { return Object.assign({}, r); });
+  }
   const sheet = getSheet_(sheetName);
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (lastRow < 2 || lastCol < 1) return [];
   const headers = getHeaders_(sheetName);
   const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
-  return values.map(function(row, idx) {
+  const rows = values.map(function(row, idx) {
     const obj = { _row: idx + 2 };
     headers.forEach(function(h, i) { obj[h] = row[i]; });
     return obj;
   });
+  __BB_LATENCY_CACHE__.rows[sheetName] = rows;
+  return rows.map(function(r) { return Object.assign({}, r); });
 }
 
 function appendObject_(sheetName, obj) {
@@ -213,6 +229,7 @@ function appendObject_(sheetName, obj) {
   const headers = getHeaders_(sheetName);
   const row = headers.map(function(h) { return obj[h] !== undefined ? obj[h] : ''; });
   sheet.appendRow(row);
+  clearSheetCache_(sheetName);
   return obj;
 }
 
@@ -223,13 +240,14 @@ function updateRowById_(sheetName, idField, idValue, updates) {
   const found = rows.find(function(r) { return String(r[idField]) === String(idValue); });
   if (!found) throw new Error('Data tidak ditemukan: ' + sheetName + ' ' + idField + '=' + idValue);
 
+  // PATCH LATENSI: satu kali setValues untuk 1 baris, bukan setValue per kolom.
   const current = Object.assign({}, found);
-  headers.forEach(function(h, i) {
-    if (updates[h] !== undefined) {
-      sheet.getRange(found._row, i + 1).setValue(updates[h]);
-      current[h] = updates[h];
-    }
+  headers.forEach(function(h) {
+    if (updates[h] !== undefined) current[h] = updates[h];
   });
+  const rowValues = headers.map(function(h) { return current[h] !== undefined ? current[h] : ''; });
+  sheet.getRange(found._row, 1, 1, headers.length).setValues([rowValues]);
+  clearSheetCache_(sheetName);
   return current;
 }
 

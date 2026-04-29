@@ -198,23 +198,42 @@
     async requestWithRetry(payload, timeout, options = {}) {
       const exec = getExecUrl();
       let lastErr = null;
+      const action = String(payload && payload.action || '');
+      const forceBridge = options.forceBridge === true || /QrisUpload|Upload/i.test(action);
+      const bridgeTimeout = Math.min(Math.max(options.bridgeTimeout || 12000, 6000), 20000);
+      const fastTimeout = Math.min(Math.max(timeout || 10000, 6000), window.APP_CONFIG?.FAST_API_TIMEOUT_MS || 12000);
 
-      // Jalur utama: hidden iframe POST bridge. Ini paling aman untuk Chrome Mobile,
-      // karena tidak kena CORS/preflight dan tidak butuh URL googleusercontent.
+      // PATCH LATENSI 2026-04-29:
+      // Request kecil memakai JSONP dulu. Versi sebelumnya menunggu iframe bridge hingga 60 detik,
+      // lalu masih mencoba beberapa fallback. Di Chrome Mobile ini bisa membuat login 120-130 detik.
+      // Bridge tetap dipakai untuk upload QRIS/base64 besar atau jika dipaksa options.forceBridge.
+      if(!forceBridge) {
+        try {
+          return await this.jsonpWithRetry(payload, fastTimeout, Object.assign({}, options, {
+            modes: options.modes || ['flat'],
+            maxAttempts: options.maxAttempts || 2
+          }));
+        } catch(err) {
+          lastErr = err;
+        }
+      }
+
       if(options.noBridge !== true && exec) {
         try {
-          const res = await iframePostCallOnce(exec, payload, Math.max(timeout, options.bridgeTimeout || 60000));
+          const res = await iframePostCallOnce(exec, payload, bridgeTimeout);
           localStorage.setItem(LS_KEY_LAST_GOOD_BASE, exec);
           return res;
         } catch(err) {
           lastErr = err;
-          await this.delay(250);
+          await this.delay(150);
         }
       }
 
-      // Cadangan lama: JSONP. Tetap dipertahankan untuk kompatibilitas deployment lama.
       try {
-        return await this.jsonpWithRetry(payload, timeout, options);
+        return await this.jsonpWithRetry(payload, fastTimeout, Object.assign({}, options, {
+          modes: options.modes || ['flat','payload'],
+          maxAttempts: options.maxAttempts || 3
+        }));
       } catch(err) {
         lastErr = err;
       }
@@ -231,16 +250,19 @@
         throw new Error('GAS_URL_EXEC belum diisi di js/config.js');
       }
 
-      const modes = Array.isArray(options.modes) && options.modes.length ? options.modes : ['flat', 'payload'];
+      const modes = Array.isArray(options.modes) && options.modes.length ? options.modes : ['flat'];
       const attempts = [];
+      const maxAttempts = Math.max(1, Number(options.maxAttempts || 2));
 
       endpoints.forEach(endpoint => {
         modes.forEach(mode => {
-          attempts.push({
-            endpoint,
-            mode,
-            timeout: Math.max(timeout, mode === 'flat' ? 30000 : 35000)
-          });
+          if(attempts.length < maxAttempts) {
+            attempts.push({
+              endpoint,
+              mode,
+              timeout: Math.min(Math.max(timeout, 6000), window.APP_CONFIG?.FAST_API_TIMEOUT_MS || 12000)
+            });
+          }
         });
       });
 
@@ -252,7 +274,7 @@
           return res;
         } catch(err) {
           lastErr = err;
-          await this.delay(250);
+          await this.delay(120);
         }
       }
 
