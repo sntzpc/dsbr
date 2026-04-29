@@ -123,7 +123,13 @@ function listBookings_(payload) {
   if (user.role === USER_ROLES.CUSTOMER) rows = rows.filter(function(r) { return String(r.customer_id) === String(user.user_id); });
   if (user.role === USER_ROLES.OPERATOR) rows = rows.filter(function(r) { return String(r.operator_id) === String(user.operator_id); });
 
-  rows.sort(function(a, b) { return number_(a.queue_no) - number_(b.queue_no); });
+  rows.sort(function(a, b) {
+    var bd = String(b.booking_date || '') + ' ' + String(b.slot_time || b.created_at || b.updated_at || '');
+    var ad = String(a.booking_date || '') + ' ' + String(a.slot_time || a.created_at || a.updated_at || '');
+    if (bd > ad) return 1;
+    if (bd < ad) return -1;
+    return number_(b.queue_no) - number_(a.queue_no);
+  });
   return { status: APP_CONFIG.API_OK, bookings: rows.map(cleanRow_) };
 }
 

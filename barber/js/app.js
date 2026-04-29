@@ -2,7 +2,7 @@
   const U = window.Utils;
   const C = window.CONSTANTS;
   const App = {
-    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false },
+    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
     nav:{
       ADMIN:[['dashboard','🏠','Dashboard'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
       OPERATOR:[['dashboard','🏠','Dashboard'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
@@ -49,7 +49,7 @@
     },
     async logout(){
       try{ if(this.state.token) await this.api('logout'); }catch(e){}
-      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false}; this.showAuth();
+      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false,tablePages:{}}; this.showAuth();
     },
     showAuth(){ U.$('#auth-screen').classList.remove('hidden'); U.$('#app-shell').classList.add('hidden'); },
     showApp(){
@@ -74,14 +74,22 @@
     startPolling(){
       clearInterval(this.state.polling);
       const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
-      const ms=this.state.user?.role==='OPERATOR'
-        ? (isMobile?(APP_CONFIG.MOBILE_OPERATOR_POLLING_MS||20000):APP_CONFIG.OPERATOR_POLLING_MS)
-        : (isMobile?(APP_CONFIG.MOBILE_POLLING_MS||30000):APP_CONFIG.POLLING_MS);
+      const role=this.state.user?.role;
+      const ms=role==='OPERATOR'
+        ? (isMobile?(APP_CONFIG.MOBILE_OPERATOR_POLLING_MS||45000):APP_CONFIG.OPERATOR_POLLING_MS)
+        : role==='CUSTOMER'
+          ? (isMobile?(APP_CONFIG.MOBILE_CUSTOMER_POLLING_MS||60000):(APP_CONFIG.CUSTOMER_POLLING_MS||60000))
+          : (isMobile?(APP_CONFIG.MOBILE_ADMIN_POLLING_MS||90000):(APP_CONFIG.ADMIN_POLLING_MS||90000));
       this.state.polling=setInterval(()=>this.silentRefresh(),ms);
+    },
+    shouldPollPage(){
+      const role=this.state.user?.role, page=this.state.page;
+      const livePages={ADMIN:['dashboard','bookings'],OPERATOR:['dashboard','myQueue'],CUSTOMER:['dashboard','queue']};
+      return !!(livePages[role]||[]).includes(page);
     },
     async refresh(){ try{ this.loading(true,'Mengambil data terbaru...'); await this.loadSnapshot(false); this.render(); }catch(err){ U.toast('Refresh gagal',err.message,'error'); try{ await this.loadBaseData(); await this.loadPageData(); this.render(); }catch(e){} }finally{this.loading(false)} },
     async silentRefresh(){
-      if(!this.state.user || this.state.refreshBusy || this.state.isSaving || document.hidden) return;
+      if(!this.state.user || this.state.refreshBusy || this.state.isSaving || document.hidden || !this.shouldPollPage()) return;
       if(Date.now() < (this.state.pollingPausedUntil||0)) return;
       this.state.refreshBusy=true;
       try{
@@ -97,8 +105,8 @@
       const page=this.state.page;
       const safePages={
         ADMIN:['dashboard','bookings'],
-        OPERATOR:['dashboard','myQueue','history','notifications'],
-        CUSTOMER:['dashboard','queue','history','notifications']
+        OPERATOR:['dashboard','myQueue'],
+        CUSTOMER:['dashboard','queue']
       };
       return !!(safePages[role]||[]).includes(page);
     },
@@ -171,6 +179,58 @@
       ${this.stat('Total Booking',s.total||0,'Hari ini')}${this.stat('Menunggu',(s.booked||0)+(s.checked_in||0)+(s.called||0),'Belum dilayani')}${this.stat('Dilayani',s.in_service||0,'Sedang berjalan')}${this.stat('Selesai',s.finished||0,U.rupiah(s.finished_revenue||0))}
     </div>`; },
     stat(label,val,sub){ return `<div class="card stat-card"><small>${label}</small><b>${val}</b><span>${sub||''}</span></div>`; },
+    qrisImgUrl(settings={}){
+      const fileId = settings.qris_static_file_id || this.extractDriveFileId(settings.qris_static_url || '');
+      if(fileId) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1000`;
+      return settings.qris_static_url || '';
+    },
+    extractDriveFileId(url){
+      const raw=String(url||'');
+      let m=raw.match(/[?&]id=([^&]+)/); if(m) return decodeURIComponent(m[1]);
+      m=raw.match(/\/d\/([^/]+)/); if(m) return m[1];
+      return '';
+    },
+    qrisImageHtml(settings={}, maxWidth='260px'){
+      const src=this.qrisImgUrl(settings);
+      if(!src) return '';
+      const fileId=settings.qris_static_file_id || this.extractDriveFileId(settings.qris_static_url||'');
+      const fallback=fileId?`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`:(settings.qris_static_url||'');
+      return `<img src="${U.esc(src)}" data-fallback-src="${U.esc(fallback)}" alt="QRIS Statis" class="qris-img" style="max-width:${maxWidth}">`;
+    },
+    sortNewestRows(rows=[]){
+      return (rows||[]).slice().sort((a,b)=>{
+        const key=(x)=>`${x.booking_date||x.date||''} ${x.slot_time||x.created_at||x.updated_at||''}`.trim();
+        return key(b).localeCompare(key(a)) || Number(b.queue_no||0)-Number(a.queue_no||0);
+      });
+    },
+    getTableState(key){
+      this.state.tablePages=this.state.tablePages||{};
+      if(!this.state.tablePages[key]) this.state.tablePages[key]={page:1,pageSize:Number(APP_CONFIG.DEFAULT_PAGE_SIZE||20)};
+      return this.state.tablePages[key];
+    },
+    paginate(key, rows=[]){
+      const st=this.getTableState(key);
+      const total=rows.length;
+      const pages=Math.max(1,Math.ceil(total/st.pageSize));
+      st.page=Math.min(Math.max(1,Number(st.page||1)),pages);
+      const start=(st.page-1)*st.pageSize;
+      return {state:st,total,pages,start,rows:rows.slice(start,start+st.pageSize)};
+    },
+    pageNumbers(current,total){
+      const out=[]; const add=x=>{ if(!out.includes(x)) out.push(x); };
+      add(1); add(total);
+      for(let i=current-1;i<=current+1;i++) if(i>1&&i<total) add(i);
+      out.sort((a,b)=>a-b);
+      const final=[]; out.forEach((n,i)=>{ if(i&&n-out[i-1]>1) final.push('…'); final.push(n); });
+      return final;
+    },
+    paginationControls(key, meta){
+      const sizes=[20,50,100,500];
+      const pageBtns=this.pageNumbers(meta.state.page,meta.pages).map(n=> n==='…'
+        ? `<span class="pager-ellipsis">…</span>`
+        : `<button type="button" class="pager-btn ${n===meta.state.page?'active':''}" data-page-key="${key}" data-page="${n}">${n}</button>`).join('');
+      return `<div class="table-pager"><div class="pager-info">${meta.total?`${meta.start+1}-${Math.min(meta.start+meta.state.pageSize,meta.total)} dari ${meta.total}`:'0 data'}</div><div class="pager-actions"><button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.max(1,meta.state.page-1)}">‹</button>${pageBtns}<button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.min(meta.pages,meta.state.page+1)}">›</button><select class="pager-size" data-page-size-key="${key}">${sizes.map(s=>`<option value="${s}" ${s===meta.state.pageSize?'selected':''}>${s}/hal</option>`).join('')}</select></div></div>`;
+    },
     renderAdmin(page){
       const map={dashboard:()=>this.adminDashboard(),bookings:()=>this.adminBookings(),operators:()=>this.adminOperators(),services:()=>this.adminServices(),settings:()=>this.adminSettings(),reports:()=>this.adminReports(),notifications:()=>this.notificationsPage()};
       (map[page]||map.dashboard)();
@@ -185,7 +245,7 @@
     },
     adminDashboard(){
       this.setTitle('Dashboard Admin','Ringkasan operasional barbershop hari ini'); const s=this.state.dashboard?.summary||{};
-      U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="grid grid-2" style="margin-top:16px"><div class="card">${this.queuePreview()}</div><div class="card">${this.todayBookingsTable(this.state.bookings.slice(0,8))}</div></div>`;
+      U.$('#content').innerHTML=`${this.summaryCards(s)}<div class="grid grid-2" style="margin-top:16px"><div class="card">${this.queuePreview()}</div><div class="card">${this.todayBookingsTable(this.state.bookings.slice(0,8),'dashboardBookings')}</div></div>`;
     },
     operatorDashboard(){
       this.setTitle('Dashboard Operator','Order masuk ke operator hari ini'); const s=this.state.dashboard?.summary||{};
@@ -204,7 +264,7 @@
       const st=String(b.payment_status||'UNPAID').toUpperCase();
       if(st==='PAID') return `<div class="card" style="margin-top:16px"><h3>Pembayaran</h3><p>Status: <b>${U.paymentLabel(st)}</b></p></div>`;
       const s=this.state.settings||{};
-      const qris=s.qris_static_url?`<div style="margin-top:12px"><b>QRIS Statis</b><p style="color:var(--muted)">Silakan scan QRIS, lalu tunjukkan bukti pembayaran ke Operator.</p><img src="${U.esc(s.qris_static_url)}" alt="QRIS Statis" style="max-width:260px;width:100%;border-radius:16px;border:1px solid var(--border);background:white;padding:8px"></div>`:'';
+      const qris=this.qrisImgUrl(s)?`<div style="margin-top:12px"><b>QRIS Statis</b><p style="color:var(--muted)">Silakan scan QRIS, lalu tunjukkan bukti pembayaran ke Operator.</p>${this.qrisImageHtml(s,'260px')}</div>`:'';
       const tripay=String(s.payment_gateway_enabled).toLowerCase()==='true'?`<button class="primary-btn" data-action="tripayCustomer" data-id="${U.esc(b.booking_id)}" data-price="${U.esc(b.price||0)}">Bayar Online Tripay</button>`:'';
       return `<div class="card" style="margin-top:16px"><div class="section-title" style="margin-top:0"><h2>Pembayaran</h2><span class="badge">${U.paymentLabel(st)}</span></div><p>Total tagihan: <b>${U.rupiah(b.price||0)}</b></p><div class="action-row">${tripay}</div>${qris}</div>`;
     },
@@ -213,16 +273,24 @@
       U.$('#content').innerHTML=`<div class="grid grid-2"><div class="card"><form id="booking-form"><div class="form-grid"><label>Tanggal Booking<input type="date" name="booking_date" value="${U.today()}" required></label><label>Layanan<select name="service_id" required><option value="">Pilih layanan</option>${this.state.services.map(s=>`<option value="${s.service_id}">${U.esc(s.service_name)} · ${U.rupiah(s.price)} · ${s.duration_min} menit</option>`).join('')}</select><small>Setelah layanan dipilih, slot otomatis ditampilkan. Pelanggan cukup klik jam yang tersedia.</small></label><label class="span-2">Operator<select name="operator_id"><option value="ANY">Operator mana saja</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)} · Kursi ${U.esc(o.chair_no||'-')}</option>`).join('')}</select></label></div><div id="availability-result" style="margin-top:16px"><div class="empty-state"><b>Pilih layanan terlebih dahulu</b><p>Slot akan digenerate otomatis berdasarkan durasi layanan, jam kerja operator, dan booking yang sudah masuk.</p></div></div><button class="primary-btn full" type="submit" style="margin-top:16px">Konfirmasi Booking</button></form></div><div class="card">${this.queuePreview()}</div></div>`;
     },
     queueLivePage(){ this.setTitle('Antrian Live','Pantau kapasitas dan status pelanggan yang sedang dilayani'); U.$('#content').innerHTML=`<div class="card">${this.queuePreview()}</div><div class="card" style="margin-top:16px">${this.queueTable()}</div>`; },
-    queueTable(){ const q=(this.state.queue||this.state.dashboard?.queue||{}).queue||[]; return `<h3>Daftar Antrian Hari Ini</h3><div class="table-wrap"><table><thead><tr><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Status</th></tr></thead><tbody>${q.map(x=>`<tr><td>${x.queue_no}</td><td>${U.esc(x.customer_initial)}</td><td>${U.esc(x.service_name)}</td><td>${U.esc(x.operator_name)}</td><td>${U.esc(U.formatTime(x.slot_time))}</td><td>${U.badge(x.status)}</td></tr>`).join('')||'<tr><td colspan="6">Belum ada antrian.</td></tr>'}</tbody></table></div>`; },
-    customerHistory(){ this.setTitle('Riwayat Booking','Semua booking milik pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings)}</div>`; },
+    queueTable(){
+      const q=this.sortNewestRows((this.state.queue||this.state.dashboard?.queue||{}).queue||[]);
+      const meta=this.paginate('queueTable',q);
+      return `<h3>Daftar Antrian Hari Ini</h3><div class="table-wrap"><table><thead><tr><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Status</th></tr></thead><tbody>${meta.rows.map(x=>`<tr><td>${x.queue_no}</td><td>${U.esc(x.customer_initial)}</td><td>${U.esc(x.service_name)}</td><td>${U.esc(x.operator_name)}</td><td>${U.esc(U.formatTime(x.slot_time))}</td><td>${U.badge(x.status)}</td></tr>`).join('')||'<tr><td colspan="6">Belum ada antrian.</td></tr>'}</tbody></table></div>${this.paginationControls('queueTable',meta)}`;
+    },
+    customerHistory(){ this.setTitle('Riwayat Booking','Semua booking milik pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'customerHistoryBookings')}</div>`; },
     operatorQueue(){ this.setTitle('Antrian Saya','Panggil, mulai, dan selesaikan order pelanggan'); U.$('#content').innerHTML=`<div class="card">${this.operatorActionList(this.state.bookings)}</div>`; },
-    operatorHistory(){ this.setTitle('Riwayat Layanan','Order operator hari ini dan riwayat status'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings)}</div>`; },
+    operatorHistory(){ this.setTitle('Riwayat Layanan','Order operator hari ini dan riwayat status'); U.$('#content').innerHTML=`<div class="card">${this.todayBookingsTable(this.state.bookings,'operatorHistoryBookings')}</div>`; },
     operatorActionList(rows){ return `<h3>Order Hari Ini</h3><div class="queue-list">${rows.length?rows.map(b=>`<div class="queue-item"><div class="queue-no">${U.esc(b.queue_no)}</div><div class="queue-main"><b>${U.esc(b.customer_name)} · ${U.esc(b.service_name)}</b><span>${U.esc(U.formatTime(b.slot_time))} · ${U.statusLabel(b.status)} · ${U.paymentLabel(b.payment_status)}</span></div><div class="action-row">${this.operatorButtons(b)}</div></div>`).join(''):'<div class="empty-state"><b>Belum ada order</b><p>Order baru akan tampil otomatis.</p></div>'}</div>`; },
     operatorButtons(b){ const id=U.esc(b.booking_id); return `<button class="ghost-btn mini" data-action="call" data-id="${id}">Panggil</button><button class="success-btn mini" data-action="start" data-id="${id}">Mulai</button><button class="primary-btn mini" data-action="finish" data-id="${id}">Selesai</button><button class="warning-btn mini" data-action="payment" data-id="${id}" data-price="${b.price}">Bayar</button><button class="danger-btn mini" data-action="noshow" data-id="${id}">No Show</button>`; },
-    todayBookingsTable(rows){ return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):''}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>`; },
+    todayBookingsTable(rows,key='bookingsTable'){
+      const sorted=this.sortNewestRows(rows||[]);
+      const meta=this.paginate(key,sorted);
+      return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${meta.rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row no-wrap-actions">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):''}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>${this.paginationControls(key,meta)}`;
+    },
     adminBookings(){
       this.setTitle('Manajemen Booking','Filter, pantau, dan update order pelanggan');
-      U.$('#content').innerHTML=`<div class="card"><div class="toolbar"><label>Tanggal<input id="filter-booking-date" type="date" value="${U.today()}"></label><label>Status<select id="filter-status"><option value="">Semua</option>${C.STATUS.map(s=>`<option value="${s}">${U.statusLabel(s)}</option>`).join('')}</select></label><label>Operator<select id="filter-operator"><option value="">Semua</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)}</option>`).join('')}</select></label><button class="primary-btn" id="btn-filter-bookings">Terapkan</button></div></div><div class="card" style="margin-top:16px">${this.todayBookingsTable(this.state.bookings)}</div>`;
+      U.$('#content').innerHTML=`<div class="card"><div class="toolbar"><label>Tanggal<input id="filter-booking-date" type="date" value="${U.today()}"></label><label>Status<select id="filter-status"><option value="">Semua</option>${C.STATUS.map(s=>`<option value="${s}">${U.statusLabel(s)}</option>`).join('')}</select></label><label>Operator<select id="filter-operator"><option value="">Semua</option>${this.state.operators.map(o=>`<option value="${o.operator_id}">${U.esc(o.operator_name)}</option>`).join('')}</select></label><button class="primary-btn" id="btn-filter-bookings">Terapkan</button></div></div><div class="card" style="margin-top:16px">${this.todayBookingsTable(this.state.bookings,'adminBookings')}</div>`;
     },
     adminOperators(){
       this.setTitle('Master Operator','Tambah dan kelola pemangkas/barber');
@@ -235,7 +303,7 @@
     },
     adminSettings(){
       this.setTitle('Pengaturan Barbershop','Profil, jam operasional, payment gateway, dan QRIS statis'); const s=this.state.settings;
-      const qris=s.qris_static_url?`<div class="span-2"><small>QRIS aktif:</small><br><img src="${U.esc(s.qris_static_url)}" alt="QRIS Statis" style="max-width:220px;width:100%;border-radius:16px;border:1px solid var(--border);background:white;padding:8px;margin-top:8px"></div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
+      const qris=this.qrisImgUrl(s)?`<div class="span-2"><small>QRIS aktif:</small><br>${this.qrisImageHtml(s,'220px')}</div>`:'<div class="span-2"><small>Belum ada QRIS statis yang diupload.</small></div>';
       U.$('#content').innerHTML=`<div class="card"><form id="settings-form" class="form-grid">
         <label>Nama Barbershop<input name="barbershop_name" value="${U.esc(s.barbershop_name||'BarberBook')}"></label>
         <label>No WhatsApp<input name="whatsapp" value="${U.esc(s.whatsapp||s.contact_phone||'')}"></label>
@@ -314,6 +382,9 @@
       U.$$('[data-edit-service]').forEach(b=>b.onclick=()=>{const s=JSON.parse(b.getAttribute('data-edit-service')); const f=U.$('#service-form'); Object.keys(s).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(s[k]):s[k])}); window.scrollTo({top:0,behavior:'smooth'});});
       U.$$('[data-export="bookings"]').forEach(b=>b.onclick=()=>U.csvDownload('booking-barbershop.csv',this.state.bookings));
       U.$$('[data-read-notif]').forEach(b=>b.onclick=()=>this.markNotif(b.dataset.readNotif));
+      U.$$('.qris-img').forEach(img=>{ img.onerror=()=>{ const fb=img.dataset.fallbackSrc; if(fb && img.src!==fb) img.src=fb; }; });
+      U.$$('[data-page-key]').forEach(b=>b.onclick=()=>{ const st=this.getTableState(b.dataset.pageKey); st.page=Number(b.dataset.page||1); if(b.dataset.pageKey==='reportBookings') this.renderReportBookingsPage(); else this.render(false); });
+      U.$$('[data-page-size-key]').forEach(sel=>sel.onchange=()=>{ const st=this.getTableState(sel.dataset.pageSizeKey); st.pageSize=Number(sel.value||20); st.page=1; if(sel.dataset.pageSizeKey==='reportBookings') this.renderReportBookingsPage(); else this.render(false); });
       const rp=U.$('#btn-load-report'); if(rp) rp.onclick=()=>this.loadReports();
     },
     async createBooking(data){
@@ -380,6 +451,8 @@
           }
         });
 
+        if(r.qris_static_url) this.state.settings.qris_static_url = r.qris_static_url;
+        if(r.file_id) this.state.settings.qris_static_file_id = r.file_id;
         U.toast('QRIS disimpan', r.message || 'QRIS statis berhasil diupload.', 'success');
         await this.refresh();
 
@@ -391,8 +464,13 @@
     },
     async saveSettings(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveSettings',{settings:data}); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async markNotif(id){ try{ await this.api('markNotificationRead',{notification_id:id}); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')} },
+    renderReportBookingsPage(){
+      const box=U.$('#report-bookings-card');
+      if(box) box.innerHTML=this.todayBookingsTable(this.state.reportBookings||[],'reportBookings');
+      this.bindContentEvents();
+    },
     async loadReports(){
-      try{ this.loading(true); const date_from=U.$('#report-from').value, date_to=U.$('#report-to').value; const [b,r,o]=await Promise.all([this.api('getReportBookings',{date_from,date_to}),this.api('getReportRevenue',{date_from,date_to}),this.api('getReportOperators',{date_from,date_to})]); const bars=this.bars(r.by_date||{}); U.$('#report-output').innerHTML=`<div class="grid grid-4">${this.stat('Total Booking',b.summary.total,'Periode')}${this.stat('Selesai',b.summary.finished,'Transaksi')}${this.stat('Revenue',U.rupiah(r.total_revenue),'Selesai')}${this.stat('Unpaid',U.rupiah(b.summary.unpaid_amount),'Belum lunas')}</div><div class="grid grid-2"><div class="card"><h3>Revenue per Tanggal</h3>${bars}</div><div class="card"><h3>Performa Operator</h3><div class="table-wrap"><table><thead><tr><th>Operator</th><th>Pelanggan</th><th>Revenue</th><th>Durasi Rata-rata</th></tr></thead><tbody>${(o.operators||[]).map(x=>`<tr><td>${U.esc(x.operator_name)}</td><td>${x.total_customer}</td><td>${U.rupiah(x.total_revenue)}</td><td>${x.avg_duration_min} menit</td></tr>`).join('')||'<tr><td colspan="4">Belum ada data.</td></tr>'}</tbody></table></div></div></div><div class="card">${this.todayBookingsTable(b.bookings||[])}</div>`; this.state.bookings=b.bookings||[]; this.bindContentEvents(); }catch(err){U.toast('Report gagal',err.message,'error')}finally{this.loading(false)}
+      try{ this.loading(true); const date_from=U.$('#report-from').value, date_to=U.$('#report-to').value; const [b,r,o]=await Promise.all([this.api('getReportBookings',{date_from,date_to}),this.api('getReportRevenue',{date_from,date_to}),this.api('getReportOperators',{date_from,date_to})]); const bars=this.bars(r.by_date||{}); U.$('#report-output').innerHTML=`<div class="grid grid-4">${this.stat('Total Booking',b.summary.total,'Periode')}${this.stat('Selesai',b.summary.finished,'Transaksi')}${this.stat('Revenue',U.rupiah(r.total_revenue),'Selesai')}${this.stat('Unpaid',U.rupiah(b.summary.unpaid_amount),'Belum lunas')}</div><div class="grid grid-2"><div class="card"><h3>Revenue per Tanggal</h3>${bars}</div><div class="card"><h3>Performa Operator</h3><div class="table-wrap"><table><thead><tr><th>Operator</th><th>Pelanggan</th><th>Revenue</th><th>Durasi Rata-rata</th></tr></thead><tbody>${(o.operators||[]).map(x=>`<tr><td>${U.esc(x.operator_name)}</td><td>${x.total_customer}</td><td>${U.rupiah(x.total_revenue)}</td><td>${x.avg_duration_min} menit</td></tr>`).join('')||'<tr><td colspan="4">Belum ada data.</td></tr>'}</tbody></table></div></div></div><div class="card" id="report-bookings-card">${this.todayBookingsTable(b.bookings||[],'reportBookings')}</div>`; this.state.reportBookings=b.bookings||[]; this.state.bookings=b.bookings||[]; this.bindContentEvents(); }catch(err){U.toast('Report gagal',err.message,'error')}finally{this.loading(false)}
     },
     bars(obj){ const entries=Object.entries(obj); const max=Math.max(1,...entries.map(e=>Number(e[1]||0))); return `<div class="chart-bars">${entries.map(([k,v])=>`<div class="bar-row"><b>${U.esc(k)}</b><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,Number(v)/max*100)}%"></div></div><span>${U.rupiah(v)}</span></div>`).join('')||'<div class="empty-state"><b>Belum ada revenue</b></div>'}</div>`; }
   };

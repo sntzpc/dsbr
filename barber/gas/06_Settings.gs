@@ -9,6 +9,7 @@ function getSettings_(payload) {
   const isAdmin = user && user.role === USER_ROLES.ADMIN;
   const settings = {};
   rows.forEach(function(r) { settings[r.key] = r.value; });
+  normalizeQrisSettings_(settings);
 
   if (!isAdmin) {
     ['tripay_api_key', 'tripay_private_key', 'tripay_merchant_code'].forEach(function(k) { delete settings[k]; });
@@ -71,4 +72,52 @@ function cleanRow_(row) {
     }
   });
   return copy;
+}
+
+
+function normalizeQrisSettings_(settings) {
+  if (!settings) return settings;
+
+  var fileId = extractDriveFileId_(settings.qris_static_file_id) ||
+               extractDriveFileId_(settings.qris_static_url) ||
+               extractDriveFileId_(settings.qris_url) ||
+               extractDriveFileId_(settings.qris_file_id);
+
+  if (fileId) {
+    settings.qris_static_file_id = fileId;
+    settings.qris_static_url = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w1000';
+    settings.qris_static_download_url = 'https://drive.google.com/uc?export=view&id=' + encodeURIComponent(fileId);
+  }
+
+  return settings;
+}
+
+function extractDriveFileId_(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return raw;
+
+  var decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch (e) {
+    decoded = raw;
+  }
+
+  var patterns = [
+    /[?&]id=([a-zA-Z0-9_-]{20,})/,
+    /\/d\/([a-zA-Z0-9_-]{20,})/,
+    /file\/d\/([a-zA-Z0-9_-]{20,})/,
+    /open\?id=([a-zA-Z0-9_-]{20,})/,
+    /thumbnail\?id=([a-zA-Z0-9_-]{20,})/,
+    /uc\?export=(?:view|download)&id=([a-zA-Z0-9_-]{20,})/
+  ];
+
+  for (var i = 0; i < patterns.length; i++) {
+    var m = decoded.match(patterns[i]);
+    if (m && m[1]) return m[1];
+  }
+
+  return '';
 }

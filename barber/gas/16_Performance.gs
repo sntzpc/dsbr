@@ -32,12 +32,12 @@ function getAppSnapshot_(payload) {
   if (user.role === USER_ROLES.ADMIN) {
     const bookings = getBookingsByDate_(date);
     result.dashboard = { status: APP_CONFIG.API_OK, date: date, summary: summarizeBookings_(bookings) };
-    result.bookings = bookings.sort(function(a, b) { return number_(a.queue_no) - number_(b.queue_no); }).map(cleanRow_);
+    result.bookings = bookings.sort(sortBookingsNewestFirst_).map(cleanRow_);
   } else if (user.role === USER_ROLES.OPERATOR) {
     const allToday = getBookingsByDate_(date);
     const myBookings = allToday.filter(function(b) { return String(b.operator_id) === String(user.operator_id); });
-    result.dashboard = { status: APP_CONFIG.API_OK, date: date, summary: summarizeBookings_(myBookings), bookings: myBookings.map(cleanRow_) };
-    result.bookings = myBookings.sort(function(a, b) { return number_(a.queue_no) - number_(b.queue_no); }).map(cleanRow_);
+    result.dashboard = { status: APP_CONFIG.API_OK, date: date, summary: summarizeBookings_(myBookings), bookings: myBookings.slice().sort(sortBookingsNewestFirst_).map(cleanRow_) };
+    result.bookings = myBookings.sort(sortBookingsNewestFirst_).map(cleanRow_);
     result.queue = buildQueueLiveFromBookings_(date, myBookings);
   } else if (user.role === USER_ROLES.CUSTOMER) {
     const todayBookings = getBookingsByDate_(date);
@@ -111,4 +111,13 @@ function buildQueueLiveFromBookings_(date, bookings) {
       };
     })
   };
+}
+
+
+function sortBookingsNewestFirst_(a, b) {
+  var bd = String(b.booking_date || '') + ' ' + String(b.slot_time || b.created_at || b.updated_at || '');
+  var ad = String(a.booking_date || '') + ' ' + String(a.slot_time || a.created_at || a.updated_at || '');
+  if (bd > ad) return 1;
+  if (bd < ad) return -1;
+  return number_(b.queue_no) - number_(a.queue_no);
 }

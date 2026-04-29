@@ -329,7 +329,7 @@ function saveQrisStatic_(payload) {
   const file = DriveApp.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  const url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
   upsertSetting_('qris_static_file_id', file.getId(), 'File ID QRIS statis di Drive', user.user_id);
   upsertSetting_('qris_static_url', url, 'URL publik QRIS statis', user.user_id);
 
@@ -457,7 +457,7 @@ function finishQrisUpload_(payload) {
   var file = DriveApp.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  var url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000';
 
   upsertSetting_('qris_static_file_id', file.getId(), 'File ID QRIS statis di Drive', user.user_id);
   upsertSetting_('qris_static_url', url, 'URL publik QRIS statis', user.user_id);
