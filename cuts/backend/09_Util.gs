@@ -43,3 +43,21 @@ function UTIL_log(action, userId, detail) {
     });
   } catch (e) { /* Log gagal tidak boleh menghentikan proses */ }
 }
+
+/**
+ * Jalankan manual dari editor Apps Script saat pertama kali deploy atau setelah update struktur sheet.
+ * Fungsi ini akan membuat/melengkapi semua sheet tanpa menghapus data lama.
+ */
+function SETUP_initAllSheets() {
+  SHEET_initAllSheets();
+  return 'OK - Semua sheet berhasil diinisialisasi/dimigrasi.';
+}
+
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('Barbershop App')
+      .addItem('Init / Migrasi Semua Sheet', 'SETUP_initAllSheets')
+      .addToUi();
+  } catch (e) {}
+}

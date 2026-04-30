@@ -92,6 +92,9 @@ function UTIL_processRequest(e) {
       'report.daily'          : () => REPORT_daily(data),
       'report.monthly'        : () => REPORT_monthly(data),
       'report.operatorPerf'   : () => REPORT_operatorPerformance(data),
+
+      // --- SYSTEM ---
+      'system.initAll'        : () => { SHEET_initAllSheets(); return { success: true, message: 'Semua sheet berhasil diinisialisasi/dimigrasi.' }; },
     };
 
     if (ROUTE_MAP[action]) {

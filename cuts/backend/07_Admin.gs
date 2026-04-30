@@ -6,12 +6,73 @@ function ADMIN_getSettings() {
 }
 
 function ADMIN_getSettingsMap() {
-  const rows = SHEET_readAll(CONFIG.SHEET_NAMES.SETTINGS);
-  const map = {};
-  rows.forEach(r => { map[r.key] = r.value; });
-  return map;
+  const sheet = SHEET_getOrCreate(CONFIG.SHEET_NAMES.SETTINGS);
+  const values = sheet.getDataRange().getValues();
+  const map = Object.assign({}, CONFIG.DEFAULT_SETTINGS);
+  if (values.length < 2) return ADMIN_normalizeSettings_(map);
+
+  const headers = values[0].map(h => String(h || '').trim());
+  const keyIdx = headers.indexOf('key');
+  const valIdx = headers.indexOf('value');
+  if (keyIdx === -1 || valIdx === -1) return ADMIN_normalizeSettings_(map);
+
+  for (let i = 1; i < values.length; i++) {
+    const key = String(values[i][keyIdx] || '').trim();
+    if (!key) continue;
+    map[key] = values[i][valIdx];
+  }
+
+  // Kompatibilitas untuk nama setting lama jika pernah dipakai di versi sebelumnya.
+  const aliases = {
+    openHour: 'OPEN_HOUR', open_time: 'OPEN_HOUR', jamBuka: 'OPEN_HOUR', JAM_BUKA: 'OPEN_HOUR',
+    closeHour: 'CLOSE_HOUR', close_time: 'CLOSE_HOUR', jamTutup: 'CLOSE_HOUR', JAM_TUTUP: 'CLOSE_HOUR',
+    slotDuration: 'SLOT_DURATION_MIN', slotDurationMin: 'SLOT_DURATION_MIN', durasiSlot: 'SLOT_DURATION_MIN', DURASI_SLOT: 'SLOT_DURATION_MIN',
+    seats: 'SEATS', jumlahKursi: 'SEATS', JUMLAH_KURSI: 'SEATS',
+    maxCapacityDay: 'MAX_CAPACITY_DAY', kapasitasHarian: 'MAX_CAPACITY_DAY', KAPASITAS_HARIAN: 'MAX_CAPACITY_DAY'
+  };
+  Object.keys(aliases).forEach(oldKey => {
+    if (map[oldKey] !== undefined && map[oldKey] !== '') map[aliases[oldKey]] = map[oldKey];
+  });
+
+  return ADMIN_normalizeSettings_(map);
 }
 
+function ADMIN_normalizeSettings_(map) {
+  const out = Object.assign({}, CONFIG.DEFAULT_SETTINGS, map || {});
+  out.OPEN_HOUR = ADMIN_normalizeTime_(out.OPEN_HOUR, CONFIG.DEFAULT_SETTINGS.OPEN_HOUR);
+  out.CLOSE_HOUR = ADMIN_normalizeTime_(out.CLOSE_HOUR, CONFIG.DEFAULT_SETTINGS.CLOSE_HOUR);
+  out.SLOT_DURATION_MIN = ADMIN_positiveInt_(out.SLOT_DURATION_MIN, CONFIG.DEFAULT_SETTINGS.SLOT_DURATION_MIN, 5);
+  out.MAX_CAPACITY_DAY = ADMIN_positiveInt_(out.MAX_CAPACITY_DAY, CONFIG.DEFAULT_SETTINGS.MAX_CAPACITY_DAY, 1);
+  out.SEATS = ADMIN_positiveInt_(out.SEATS, CONFIG.DEFAULT_SETTINGS.SEATS, 1);
+  return out;
+}
+
+function ADMIN_positiveInt_(value, fallback, min) {
+  const n = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
+  return isNaN(n) || n < min ? fallback : n;
+}
+
+function ADMIN_normalizeTime_(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const tz = Session.getScriptTimeZone() || 'Asia/Jakarta';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, tz, 'HH:mm');
+  }
+  let s = String(value).trim();
+
+  // Contoh Date.toString(): Sat Dec 30 1899 08:00:00 GMT+0700 ...
+  let m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (m) return String(parseInt(m[1], 10)).padStart(2, '0') + ':' + m[2];
+
+  // Format serial time-only Google Sheets: 0.333333 = 08:00.
+  const num = Number(s.replace(',', '.'));
+  if (!isNaN(num) && num >= 0 && num < 1) {
+    const total = Math.round(num * 24 * 60);
+    return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  }
+
+  return fallback;
+}
 function ADMIN_saveSettings(data) {
   const { settings } = data;
   const now = UTIL_nowIso_();

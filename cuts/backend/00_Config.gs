@@ -1,7 +1,18 @@
 // KONFIGURASI GLOBAL
 // ============================================================
+
+function CONFIG_getSpreadsheetId_() {
+  const propId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (propId) return propId;
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (!active) {
+    throw new Error('SPREADSHEET_ID belum diset. Jika Apps Script tidak terikat ke Google Sheet, isi Script Properties: SPREADSHEET_ID = ID Google Sheet database.');
+  }
+  return active.getId();
+}
+
 const CONFIG = {
-  SPREADSHEET_ID: SpreadsheetApp.getActiveSpreadsheet().getId(),
+  SPREADSHEET_ID: CONFIG_getSpreadsheetId_(),
   SHEET_NAMES: {
     SETTINGS    : 'Settings',
     USERS       : 'Users',

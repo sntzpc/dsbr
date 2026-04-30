@@ -18,11 +18,11 @@ function BOOKING_create(data) {
   if (userBookingToday) throw new Error('Anda sudah memiliki booking aktif di tanggal ini.');
 
   const operators = SHEET_readAll(CONFIG.SHEET_NAMES.OPERATORS);
-  const operator = operators.find(o => o.operatorId === operatorId && o.isActive === 'true');
+  const operator = operators.find(o => o.operatorId === operatorId && String(o.isActive).toLowerCase() === 'true');
   if (!operator) throw new Error('Operator tidak ditemukan atau tidak aktif.');
 
   const services = SHEET_readAll(CONFIG.SHEET_NAMES.SERVICES);
-  const service = services.find(s => s.serviceId === serviceId && s.isActive === 'true');
+  const service = services.find(s => s.serviceId === serviceId && String(s.isActive).toLowerCase() === 'true');
   if (!service) throw new Error('Layanan tidak ditemukan atau tidak aktif.');
 
   const availableMap = BOOKING_getSlotAvailabilityMap_(date, operatorId, settings, todayBookings);
@@ -114,7 +114,7 @@ function BOOKING_getDailySlots(data) {
   const bookings = SHEET_readAll(CONFIG.SHEET_NAMES.BOOKINGS);
   const todayBookings = bookings.filter(b => b.date === date && b.status !== 'cancelled');
 
-  const operators = SHEET_readAll(CONFIG.SHEET_NAMES.OPERATORS).filter(o => o.isActive === 'true');
+  const operators = SHEET_readAll(CONFIG.SHEET_NAMES.OPERATORS).filter(o => String(o.isActive).toLowerCase() === 'true');
   const perOperatorCap = BOOKING_operatorCapacity_(settings);
 
   const operatorSlots = operators.map(op => {
@@ -137,13 +137,14 @@ function BOOKING_getDailySlots(data) {
     totalBooked   : todayBookings.length,
     maxCapacity   : maxCapacity,
     remainingSlots: Math.max(0, maxCapacity - todayBookings.length),
+    settings      : ADMIN_normalizeSettings_(settings),
     operators     : operatorSlots
   };
 }
 
 function BOOKING_getSlotAvailability_(date, operatorId, settings, todayBookings) {
   const slotTimes = BOOKING_generateTimeSlots_(settings);
-  const perTimeCap = Math.max(1, parseInt(settings.SEATS, 10) || 1); // kursi paralel per jam pada operator tersebut
+  const perTimeCap = BOOKING_getPerTimeCapacity_(settings);
   const bookedByTime = {};
   todayBookings
     .filter(b => b.operatorId === operatorId)
@@ -172,11 +173,20 @@ function BOOKING_getSlotAvailabilityMap_(date, operatorId, settings, todayBookin
 }
 
 function BOOKING_generateTimeSlots_(settings) {
-  const open = settings.OPEN_HOUR || '08:00';
-  const close = settings.CLOSE_HOUR || '21:00';
-  const dur = Math.max(5, parseInt(settings.SLOT_DURATION_MIN, 10) || 30);
+  const normalized = ADMIN_normalizeSettings_(settings || {});
+  const open = normalized.OPEN_HOUR || CONFIG.DEFAULT_SETTINGS.OPEN_HOUR;
+  const close = normalized.CLOSE_HOUR || CONFIG.DEFAULT_SETTINGS.CLOSE_HOUR;
+  const dur = Math.max(5, parseInt(normalized.SLOT_DURATION_MIN, 10) || 30);
   const start = BOOKING_timeToMinutes_(open);
-  const end = BOOKING_timeToMinutes_(close);
+  let end = BOOKING_timeToMinutes_(close);
+
+  // Jika close <= open, biasanya karena nilai Time di Sheet terbaca rusak.
+  // Gunakan fallback default agar operator tidak tampil "Penuh" palsu.
+  if (end <= start) {
+    const defaultEnd = BOOKING_timeToMinutes_(CONFIG.DEFAULT_SETTINGS.CLOSE_HOUR);
+    end = defaultEnd > start ? defaultEnd : start + (8 * 60);
+  }
+
   const slots = [];
   for (let m = start; m < end; m += dur) {
     slots.push(BOOKING_minutesToTime_(m));
@@ -184,18 +194,25 @@ function BOOKING_generateTimeSlots_(settings) {
   return slots;
 }
 
+function BOOKING_getPerTimeCapacity_(settings) {
+  const normalized = ADMIN_normalizeSettings_(settings || {});
+  return Math.max(1, parseInt(normalized.SEATS, 10) || 1);
+}
+
 function BOOKING_operatorCapacity_(settings) {
-  return BOOKING_generateTimeSlots_(settings).length * Math.max(1, parseInt(settings.SEATS, 10) || 1);
+  return BOOKING_generateTimeSlots_(settings).length * BOOKING_getPerTimeCapacity_(settings);
 }
 
 function BOOKING_timeToMinutes_(hhmm) {
-  const parts = String(hhmm || '00:00').split(':');
+  const time = ADMIN_normalizeTime_(hhmm, '00:00');
+  const parts = String(time || '00:00').split(':');
   return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
 }
 
 function BOOKING_minutesToTime_(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const safe = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(safe / 60);
+  const m = safe % 60;
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
