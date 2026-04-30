@@ -4,8 +4,8 @@
   const App = {
     state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, loyalty:null, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
     nav:{
-      ADMIN:[['dashboard','🏠','Dashboard'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
-      OPERATOR:[['dashboard','🏠','Dashboard'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
+      ADMIN:[['dashboard','🏠','Dashboard'],['calendar','📅','Kalender'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
+      OPERATOR:[['dashboard','🏠','Dashboard'],['calendar','📅','Kalender'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
       CUSTOMER:[['dashboard','🏠','Dashboard'],['booking','🗓️','Booking'],['queue','📡','Antrian Live'],['loyalty','⭐','Loyalty'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']]
     },
     init(){
@@ -254,11 +254,11 @@
       return `<div class="table-pager"><div class="pager-info">${meta.total?`${meta.start+1}-${Math.min(meta.start+meta.state.pageSize,meta.total)} dari ${meta.total}`:'0 data'}</div><div class="pager-actions"><button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.max(1,meta.state.page-1)}">‹</button>${pageBtns}<button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.min(meta.pages,meta.state.page+1)}">›</button><select class="pager-size" data-page-size-key="${key}">${sizes.map(s=>`<option value="${s}" ${s===meta.state.pageSize?'selected':''}>${s}/hal</option>`).join('')}</select></div></div>`;
     },
     renderAdmin(page){
-      const map={dashboard:()=>this.adminDashboard(),bookings:()=>this.adminBookings(),operators:()=>this.adminOperators(),services:()=>this.adminServices(),settings:()=>this.adminSettings(),reports:()=>this.adminReports(),notifications:()=>this.notificationsPage()};
+      const map={dashboard:()=>this.adminDashboard(),calendar:()=>this.bookingCalendarPage(),bookings:()=>this.adminBookings(),operators:()=>this.adminOperators(),services:()=>this.adminServices(),settings:()=>this.adminSettings(),reports:()=>this.adminReports(),notifications:()=>this.notificationsPage()};
       (map[page]||map.dashboard)();
     },
     renderOperator(page){
-      const map={dashboard:()=>this.operatorDashboard(),myQueue:()=>this.operatorQueue(),history:()=>this.operatorHistory(),notifications:()=>this.notificationsPage()};
+      const map={dashboard:()=>this.operatorDashboard(),calendar:()=>this.bookingCalendarPage(),myQueue:()=>this.operatorQueue(),history:()=>this.operatorHistory(),notifications:()=>this.notificationsPage()};
       (map[page]||map.dashboard)();
     },
     renderCustomer(page){
@@ -361,6 +361,70 @@
       const sorted=this.sortNewestRows(rows||[]);
       const meta=this.paginate(key,sorted);
       return `<div class="section-title" style="margin-top:0"><h2>Data Booking</h2><button class="ghost-btn small" data-export="bookings">Export CSV</button></div><div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>No</th><th>Pelanggan</th><th>Layanan</th><th>Operator</th><th>Jam</th><th>Harga</th><th>Status</th><th>Bayar</th><th>Aksi</th></tr></thead><tbody>${meta.rows.map(b=>`<tr><td>${U.esc(U.formatDate(b.booking_date))}</td><td>${U.esc(b.queue_no)}</td><td>${U.esc(b.customer_name)}</td><td>${U.esc(b.service_name)}</td><td>${U.esc(b.operator_name)}</td><td>${U.esc(U.formatTime(b.slot_time))}</td><td>${U.rupiah(b.price)}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td><td><div class="action-row no-wrap-actions">${this.state.user.role!=='CUSTOMER'?this.operatorButtons(b):(String(b.status||'').toUpperCase()==='FINISHED'?`<button class="ghost-btn mini" data-action="receipt" data-id="${U.esc(b.booking_id)}">Struk</button>`:'')}</div></td></tr>`).join('')||'<tr><td colspan="10">Belum ada data.</td></tr>'}</tbody></table></div>${this.paginationControls(key,meta)}`;
+    },
+
+    bookingCalendarPage(){
+      this.setTitle('Kalender Booking','Klik tanggal untuk detail');
+      const now = new Date();
+      const defaultMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      const currentMonth = this.state.calendarMonth || defaultMonth;
+      const opOptions = this.state.user.role==='ADMIN'
+        ? `<label>Operator<select id="calendar-operator"><option value="">Semua Operator</option>${this.state.operators.map(o=>`<option value="${U.esc(o.operator_id)}" ${String(this.state.calendarOperator||'')===String(o.operator_id)?'selected':''}>${U.esc(o.operator_name)}</option>`).join('')}</select></label>`
+        : '';
+      U.$('#content').innerHTML=`<div class="card"><div class="toolbar calendar-toolbar"><button class="ghost-btn" id="btn-calendar-prev">‹ Bulan Sebelumnya</button><label>Bulan<input id="calendar-month" type="month" value="${U.esc(currentMonth)}"></label>${opOptions}<button class="primary-btn" id="btn-load-calendar">Tampilkan</button><button class="ghost-btn" id="btn-calendar-today">Bulan Ini</button></div><small>Tanggal yang sudah lewat tetap tampil dan diarsir abu-abu. Booking tanggal lampau yang belum selesai akan otomatis berubah menjadi No Show saat data dimuat.</small></div><div class="card" style="margin-top:16px" id="calendar-wrap">${this.renderCalendarMatrix()}</div>`;
+      const key = `${currentMonth}|${this.state.calendarOperator||''}`;
+      if(!this.state.calendar || this.state.calendarKey!==key){
+        setTimeout(()=>this.loadBookingCalendar(),0);
+      }
+    },
+    renderCalendarMatrix(){
+      const cal=this.state.calendar;
+      if(!cal) return `<div class="empty-state"><b>Kalender belum dimuat</b><p>Tekan tombol Tampilkan untuk mengambil matrik booking.</p></div>`;
+      const headings=['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
+      const first=cal.days && cal.days[0] ? cal.days[0] : null;
+      const offset=first ? ((Number(first.weekday)+6)%7) : 0;
+      const blanks=Array.from({length:offset}).map(()=>`<div class="calendar-cell blank"></div>`).join('');
+      const cells=(cal.days||[]).map(d=>{
+        const cls=['calendar-cell']; if(d.is_past) cls.push('past'); if(d.is_today) cls.push('today'); if(Number(d.total||0)>0) cls.push('has-booking');
+        const statusLine = Number(d.total||0)>0
+          ? `<div class="calendar-chips"><span>${Number(d.active||0)} Aktif</span><span>${Number(d.finished||0)} Selesai</span><span>${Number(d.cancelled||0)} Batal</span><span>${Number(d.no_show||0)} No Show</span></div>`
+          : `<small class="muted">Kosong</small>`;
+        return `<button type="button" class="${cls.join(' ')}" data-calendar-date="${U.esc(d.date)}"><div class="calendar-date-head"><b>${d.day}</b>${d.total?`<em>${d.total} order</em>`:''}</div>${statusLine}</button>`;
+      }).join('');
+      return `<div class="section-title" style="margin-top:0"><h2>${U.esc(cal.month_label||'Kalender')}</h2><span class="badge">${U.esc(U.formatDate(cal.date_from))} - ${U.esc(U.formatDate(cal.date_to))}</span></div><div class="calendar-legend"><span><i class="legend-dot today"></i>Hari ini</span><span><i class="legend-dot past"></i>Tanggal lewat</span><span><i class="legend-dot active"></i>Ada booking</span></div><div class="calendar-grid headings">${headings.map(h=>`<div>${h}</div>`).join('')}</div><div class="calendar-grid">${blanks}${cells}</div>`;
+    },
+    async loadBookingCalendar(){
+      try{
+        const m=U.$('#calendar-month')?.value || this.state.calendarMonth || U.today().slice(0,7);
+        const op=U.$('#calendar-operator')?.value || this.state.calendarOperator || '';
+        this.state.calendarMonth=m; this.state.calendarOperator=op;
+        const [year,month]=m.split('-').map(Number);
+        this.loading(true,'Memuat matrik kalender...');
+        const r=await this.api('getBookingCalendar',{year,month_number:month,operator_id:op});
+        this.state.calendar=r;
+        this.state.calendarKey=`${m}|${op}`;
+        const box=U.$('#calendar-wrap'); if(box) box.innerHTML=this.renderCalendarMatrix();
+        this.bindContentEvents();
+      }catch(err){U.toast('Kalender gagal dimuat',err.message,'error')}
+      finally{this.loading(false)}
+    },
+    shiftCalendarMonth(delta){
+      const base=this.state.calendarMonth || U.today().slice(0,7);
+      const [y,m]=base.split('-').map(Number);
+      const d=new Date(y,m-1+Number(delta||0),1);
+      this.state.calendarMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      this.state.calendar=null;
+      this.render(false);
+    },
+    showCalendarDayDetail(date){
+      const cal=this.state.calendar; if(!cal) return;
+      const day=(cal.days||[]).find(d=>String(d.date)===String(date));
+      if(!day) return;
+      const rows=day.bookings||[];
+      const summary=`<div class="grid grid-4">${this.stat('Total',day.total||0,'Order')}${this.stat('Selesai',day.finished||0,'')}${this.stat('Batal',day.cancelled||0,'')}${this.stat('No Show',day.no_show||0,'')}</div>`;
+      const table=`<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>No</th><th>Pelanggan</th><th>No HP</th><th>Layanan</th><th>Operator</th><th>Jam Rencana</th><th>Status</th><th>Bayar</th></tr></thead><tbody>${rows.map(b=>`<tr><td>${U.esc(b.queue_no||'-')}</td><td>${U.esc(b.customer_name||'-')}</td><td>${U.esc(b.customer_phone||'-')}</td><td>${U.esc(b.service_name||'-')}</td><td>${U.esc(b.operator_name||'-')}</td><td>${U.esc(U.formatTime(b.slot_time)||'-')}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td></tr>`).join('')||'<tr><td colspan="8">Kosong pada tanggal ini.</td></tr>'}</tbody></table></div>`;
+      const note=day.is_past?`<small>Tanggal ini sudah lewat. Booking yang belum selesai akan otomatis menjadi No Show, sedangkan transaksi selesai tetap menampilkan status bayar.</small>`:`<small>Data menampilkan booking sesuai otorisasi login saat ini.</small>`;
+      U.modal(`Detail Booking ${U.formatDate(date)}`,`${summary}${table}${note}`);
     },
     adminBookings(){
       this.setTitle('Manajemen Booking','Order pelanggan');
@@ -471,6 +535,12 @@
         bf.onsubmit=async e=>{e.preventDefault(); await this.createBooking(U.serialize(bf));};
       }
       const ff=U.$('#btn-filter-bookings'); if(ff) ff.onclick=()=>this.filterBookings();
+      const cm=U.$('#calendar-month'); if(cm) cm.onchange=()=>{this.state.calendarMonth=cm.value; this.state.calendar=null; this.loadBookingCalendar();};
+      const co=U.$('#calendar-operator'); if(co) co.onchange=()=>{this.state.calendarOperator=co.value; this.state.calendar=null; this.loadBookingCalendar();};
+      const cl=U.$('#btn-load-calendar'); if(cl) cl.onclick=()=>this.loadBookingCalendar();
+      const cp=U.$('#btn-calendar-prev'); if(cp) cp.onclick=()=>this.shiftCalendarMonth(-1);
+      const cn=U.$('#btn-calendar-today'); if(cn) cn.onclick=()=>{this.state.calendarMonth=U.today().slice(0,7); this.state.calendar=null; this.render(false);};
+      U.$$('[data-calendar-date]').forEach(b=>b.onclick=()=>this.showCalendarDayDetail(b.dataset.calendarDate));
       const of=U.$('#operator-form'); if(of) of.onsubmit=async e=>{e.preventDefault(); await this.saveOperator(U.serialize(of));};
       const sf=U.$('#service-form'); if(sf) sf.onsubmit=async e=>{e.preventDefault(); await this.saveService(U.serialize(sf));};
       const st=U.$('#settings-form'); if(st) st.onsubmit=async e=>{e.preventDefault(); await this.saveSettings(U.serialize(st));};

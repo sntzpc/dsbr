@@ -110,6 +110,7 @@ function createBooking_(payload) {
 
 function listBookings_(payload) {
   const user = requireAuth_(payload);
+  autoMarkPastNoShows_();
   let rows = getRowsAsObjects_('Bookings');
   if (payload.date || payload.booking_date) {
     const d = toDateOnly_(payload.date || payload.booking_date);
@@ -169,6 +170,108 @@ function updateBookingStatus_(payload) {
 
 function getBookingsByDate_(date) {
   return getRowsAsObjects_('Bookings').filter(function(b) { return toDateOnly_(b.booking_date) === toDateOnly_(date); });
+}
+
+/**
+ * Otomatis menandai booking tanggal lampau yang belum selesai sebagai NO_SHOW.
+ * Dipanggil sebelum list/dashboard/calendar agar operator tidak perlu klik manual.
+ */
+function autoMarkPastNoShows_() {
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(8000); } catch (err) { return { updated: 0, skipped: true, message: err.message }; }
+  try {
+    const today = today_();
+    const rows = getRowsAsObjects_('Bookings');
+    const targetStatuses = [BOOKING_STATUS.BOOKED, BOOKING_STATUS.CHECKED_IN, BOOKING_STATUS.CALLED];
+    const systemUser = { user_id: 'SYSTEM', role: 'SYSTEM' };
+    let updatedCount = 0;
+    rows.forEach(function(b) {
+      if (compareDate_(b.booking_date, today) < 0 && targetStatuses.indexOf(String(b.status)) >= 0) {
+        const stamped = now_();
+        const updated = updateRowById_('Bookings', 'booking_id', b.booking_id, {
+          status: BOOKING_STATUS.NO_SHOW,
+          no_show_at: stamped,
+          updated_at: stamped
+        });
+        updatedCount += 1;
+        try {
+          createNotificationInternal_(b.customer_id, b.booking_id, 'Tidak Hadir', 'Booking tanggal ' + toDateOnly_(b.booking_date) + ' otomatis ditandai No Show karena tanggal sudah lewat.', 'NO_SHOW');
+          writeAuditLog_(systemUser, 'AUTO_NO_SHOW', 'Bookings', b.booking_id, b, updated, 'Auto No Show booking tanggal lampau');
+        } catch (err2) {}
+      }
+    });
+    return { updated: updatedCount };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getBookingCalendar_(payload) {
+  const user = requireRole_(payload, [USER_ROLES.ADMIN, USER_ROLES.OPERATOR]);
+  autoMarkPastNoShows_();
+
+  const baseDate = parseDateValue_(payload.month || payload.date || today_()) || parseDateValue_(today_());
+  const year = number_(payload.year, baseDate.getFullYear());
+  const month = number_(payload.month_number, baseDate.getMonth() + 1);
+  const first = new Date(year, month - 1, 1);
+  const last = new Date(year, month, 0);
+  const dateFrom = formatDateOnly_(first);
+  const dateTo = formatDateOnly_(last);
+  const today = today_();
+
+  let rows = getRowsAsObjects_('Bookings').filter(function(r) {
+    return compareDate_(r.booking_date, dateFrom) >= 0 && compareDate_(r.booking_date, dateTo) <= 0;
+  });
+  if (user.role === USER_ROLES.OPERATOR) {
+    rows = rows.filter(function(r) { return String(r.operator_id) === String(user.operator_id); });
+  }
+  if (payload.operator_id && user.role === USER_ROLES.ADMIN) {
+    rows = rows.filter(function(r) { return String(r.operator_id) === String(payload.operator_id); });
+  }
+
+  const byDate = {};
+  rows.forEach(function(b) {
+    const d = toDateOnly_(b.booking_date);
+    if (!byDate[d]) byDate[d] = { total: 0, active: 0, finished: 0, cancelled: 0, no_show: 0, paid: 0, unpaid: 0, revenue: 0, bookings: [] };
+    const cell = byDate[d];
+    const st = String(b.status);
+    cell.total += 1;
+    if ([BOOKING_STATUS.CANCELLED, BOOKING_STATUS.NO_SHOW, BOOKING_STATUS.FINISHED].indexOf(st) === -1) cell.active += 1;
+    if (st === BOOKING_STATUS.FINISHED) cell.finished += 1;
+    if (st === BOOKING_STATUS.CANCELLED) cell.cancelled += 1;
+    if (st === BOOKING_STATUS.NO_SHOW) cell.no_show += 1;
+    if (String(b.payment_status) === PAYMENT_STATUS.PAID) cell.paid += 1; else cell.unpaid += 1;
+    if (st === BOOKING_STATUS.FINISHED || String(b.payment_status) === PAYMENT_STATUS.PAID) cell.revenue += number_(b.price, 0);
+    cell.bookings.push(cleanRow_(b));
+  });
+
+  const days = [];
+  for (let i = 1; i <= last.getDate(); i++) {
+    const d = formatDateOnly_(new Date(year, month - 1, i));
+    const cell = byDate[d] || { total: 0, active: 0, finished: 0, cancelled: 0, no_show: 0, paid: 0, unpaid: 0, revenue: 0, bookings: [] };
+    cell.bookings.sort(function(a, b) {
+      const at = String(a.slot_time || a.created_at || '');
+      const bt = String(b.slot_time || b.created_at || '');
+      return at.localeCompare(bt) || number_(a.queue_no) - number_(b.queue_no);
+    });
+    days.push(Object.assign({
+      date: d,
+      day: i,
+      weekday: new Date(year, month - 1, i).getDay(),
+      is_past: compareDate_(d, today) < 0,
+      is_today: compareDate_(d, today) === 0
+    }, cell));
+  }
+
+  return {
+    status: APP_CONFIG.API_OK,
+    year: year,
+    month: month,
+    month_label: Utilities.formatDate(first, APP_CONFIG.TIMEZONE, 'MMMM yyyy'),
+    date_from: dateFrom,
+    date_to: dateTo,
+    days: days
+  };
 }
 
 function validateOperationalDate_(date) {

@@ -4,6 +4,7 @@
  */
 function getDashboardAdmin_(payload) {
   requireRole_(payload, USER_ROLES.ADMIN);
+  autoMarkPastNoShows_();
   const date = toDateOnly_(payload.date || payload.booking_date || today_());
   const bookings = getBookingsByDate_(date);
   const summary = summarizeBookings_(bookings);
@@ -12,6 +13,7 @@ function getDashboardAdmin_(payload) {
 
 function getDashboardOperator_(payload) {
   const user = requireRole_(payload, USER_ROLES.OPERATOR);
+  autoMarkPastNoShows_();
   const date = toDateOnly_(payload.date || payload.booking_date || today_());
   const bookings = getBookingsByDate_(date).filter(function(b) { return String(b.operator_id) === String(user.operator_id); });
   return { status: APP_CONFIG.API_OK, date: date, summary: summarizeBookings_(bookings), bookings: bookings.map(cleanRow_) };
@@ -30,6 +32,7 @@ function getDashboardCustomer_(payload) {
 
 function getReportBookings_(payload) {
   requireRole_(payload, USER_ROLES.ADMIN);
+  autoMarkPastNoShows_();
   let rows = getRowsAsObjects_('Bookings');
   if (payload.date_from) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_from) >= 0; });
   if (payload.date_to) rows = rows.filter(function(r) { return compareDate_(r.booking_date, payload.date_to) <= 0; });

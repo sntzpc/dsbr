@@ -4,6 +4,7 @@
  */
 function getAppSnapshot_(payload) {
   const user = requireAuth_(payload);
+  autoMarkPastNoShows_();
   const date = toDateOnly_(payload.date || payload.booking_date || today_());
   const page = String(payload.page || '').trim();
   const includeNotifications = payload.include_notifications === true || String(payload.include_notifications) === 'true';

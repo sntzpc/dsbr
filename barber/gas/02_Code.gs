@@ -67,6 +67,7 @@ function routeAction_(action, payload, e) {
     getBookingAvailability: getBookingAvailability_,
     createBooking: createBooking_,
     listBookings: listBookings_,
+    getBookingCalendar: getBookingCalendar_,
     cancelBooking: cancelBooking_,
     updateBookingStatus: updateBookingStatus_,
 
