@@ -3,13 +3,17 @@
 async function loadOperatorQueue() {
   const el = document.getElementById('op-queue-list');
   el.innerHTML = '<div class="spinner"></div>';
-  if (!STATE.operatorId) {
-    el.innerHTML = '<div class="text-muted text-small">Akun tidak terhubung ke operator. Hubungi admin.</div>';
-    return;
-  }
   try {
-    const queue = await api('operator.getMyQueue', { operatorId: STATE.operatorId });
-    const waiting = queue.filter(q => ['waiting','called'].includes(q.status)).length;
+    const queue = await api('operator.getMyQueue', {
+      operatorId: STATE.operatorId || '',
+      userId    : STATE.user?.userId || '',
+      phone     : STATE.user?.phone || '',
+      date      : todayStr()
+    });
+
+    if (!STATE.operatorId && queue.length) STATE.operatorId = queue[0].operatorId;
+
+    const waiting = queue.filter(q => ['waiting','called','in_progress'].includes(q.status)).length;
     const done = queue.filter(q => q.status === 'done').length;
     document.getElementById('op-count-wait').textContent = waiting;
     document.getElementById('op-count-done').textContent = done;
@@ -22,9 +26,9 @@ async function loadOperatorQueue() {
       <div class="card" style="margin-bottom:12px">
         <div class="row">
           <div>
-            <div class="fw-bold font-head" style="font-size:1.2rem;color:var(--gold)">#${q.queueNumber}</div>
+            <div class="fw-bold font-head" style="font-size:1.2rem;color:var(--gold)">#${q.queueNumber} · ${q.timeSlot || 'Jam belum ada'}</div>
             <div class="fw-bold mt-4">${q.customerName}</div>
-            <div class="text-muted text-small mt-4">${q.operatorName}</div>
+            <div class="text-muted text-small mt-4">${q.serviceName || 'Layanan'} · ${q.operatorName}</div>
           </div>
           <div style="text-align:right">${statusBadge(q.status)}</div>
         </div>
@@ -36,7 +40,26 @@ async function loadOperatorQueue() {
           ${q.status==='done'?`<span class="chip">Selesai</span>`:''}
         </div>
       </div>`).join('');
-  } catch(e) { el.innerHTML = '<div class="text-muted text-small">Gagal memuat antrian</div>'; }
+  } catch(e) { el.innerHTML = '<div class="text-muted text-small">Gagal memuat antrian: '+e.message+'</div>'; }
+}
+
+async function loadOperatorCalendar() {
+  const input = document.getElementById('op-calendar-month');
+  const el = document.getElementById('op-calendar');
+  if (!input || !el) return;
+  if (!input.value) input.value = todayStr().slice(0, 7);
+  const [year, month] = input.value.split('-').map(Number);
+  try {
+    const data = await api('admin.getMonthlyCalendar', {
+      year, month,
+      operatorId: STATE.operatorId || '',
+      userId    : STATE.user?.userId || '',
+      phone     : STATE.user?.phone || ''
+    });
+    renderCalendarGrid(el, year, month, data.days, 'Operator');
+  } catch (err) {
+    el.innerHTML = '<div class="text-muted text-small">Gagal memuat kalender: '+err.message+'</div>';
+  }
 }
 
 async function opCall(bookingId) {

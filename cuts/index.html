@@ -126,6 +126,10 @@
         <div id="operator-list-book"><div class="spinner"></div></div>
       </div>
       <div class="field">
+        <label>Pilih Jam Pelayanan</label>
+        <div id="time-slot-list" class="time-slot-grid"><div class="text-muted text-small">Pilih operator terlebih dahulu.</div></div>
+      </div>
+      <div class="field">
         <label>Pilih Layanan</label>
         <select id="book-service"><option value="">-- Pilih Layanan --</option></select>
       </div>
@@ -182,6 +186,16 @@
       </div>
       <button class="btn btn-outline" onclick="loadOperatorQueue()">↻ Refresh Antrian</button>
     </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <div>
+          <div class="section-label">Kalender Booking Bulanan</div>
+          <div class="text-muted text-small">Klik tanggal untuk melihat daftar booking.</div>
+        </div>
+        <input type="month" id="op-calendar-month" onchange="loadOperatorCalendar()" style="max-width:150px"/>
+      </div>
+      <div id="op-calendar"><div class="spinner"></div></div>
+    </div>
     <div id="op-queue-list"><div class="spinner"></div></div>
   </div>
 </div>
@@ -196,6 +210,7 @@
     <!-- Admin Tabs -->
     <div class="auth-tabs" style="margin-bottom:20px">
       <div class="auth-tab active" onclick="adminTab('dashboard')">Dashboard</div>
+      <div class="auth-tab" onclick="adminTab('calendar')">Kalender</div>
       <div class="auth-tab" onclick="adminTab('operators')">Operator</div>
       <div class="auth-tab" onclick="adminTab('services')">Layanan</div>
       <div class="auth-tab" onclick="adminTab('settings')">Setting</div>
@@ -210,6 +225,20 @@
       <div class="card">
         <div class="section-label">Booking Hari Ini</div>
         <div id="admin-today-bookings"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Calendar -->
+    <div id="admin-calendar" class="hidden">
+      <div class="card">
+        <div class="row" style="margin-bottom:12px">
+          <div>
+            <div class="section-label">Matrik Kalender Booking</div>
+            <div class="text-muted text-small">Klik tanggal untuk melihat nama pelanggan, jam, operator, dan layanan.</div>
+          </div>
+          <input type="month" id="admin-calendar-month" onchange="loadAdminCalendar()" style="max-width:150px"/>
+        </div>
+        <div id="admin-calendar-grid"><div class="spinner"></div></div>
       </div>
     </div>
 

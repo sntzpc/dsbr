@@ -16,6 +16,7 @@ async function loadMyBookings() {
             <div class="fw-bold">${b.serviceName}</div>
             <div class="text-muted text-small mt-4">✂ ${b.operatorName}</div>
             <div class="text-muted text-small mt-4">📅 ${formatDate(b.date)}</div>
+            <div class="text-muted text-small mt-4">🕒 ${b.timeSlot || '-'}</div>
           </div>
           <div style="text-align:right">
             ${statusBadge(b.status)}

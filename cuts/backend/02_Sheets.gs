@@ -55,26 +55,24 @@ function SHEET_initOperators() {
 
 function SHEET_initBookings() {
   const sheet = SHEET_getOrCreate(CONFIG.SHEET_NAMES.BOOKINGS);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'bookingId', 'userId', 'customerName', 'phone',
-      'date', 'timeSlot', 'operatorId', 'operatorName',
-      'serviceId', 'serviceName', 'price',
-      'queueNumber', 'status', 'notes', 'createdAt', 'updatedAt'
-    ]);
-  }
+  const headers = [
+    'bookingId', 'userId', 'customerName', 'phone',
+    'date', 'timeSlot', 'operatorId', 'operatorName',
+    'serviceId', 'serviceName', 'price',
+    'queueNumber', 'status', 'notes', 'createdAt', 'updatedAt'
+  ];
+  SHEET_ensureHeaders(sheet, headers);
 }
 
 function SHEET_initQueue() {
   const sheet = SHEET_getOrCreate(CONFIG.SHEET_NAMES.QUEUE);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'queueId', 'bookingId', 'date', 'queueNumber',
-      'userId', 'customerName', 'operatorId', 'operatorName',
-      'status', 'calledAt', 'startedAt', 'finishedAt',
-      'durationMinutes', 'seatNumber'
-    ]);
-  }
+  const headers = [
+    'queueId', 'bookingId', 'date', 'timeSlot', 'queueNumber',
+    'userId', 'customerName', 'operatorId', 'operatorName',
+    'serviceId', 'serviceName', 'status', 'calledAt', 'startedAt', 'finishedAt',
+    'durationMinutes', 'seatNumber'
+  ];
+  SHEET_ensureHeaders(sheet, headers);
 }
 
 function SHEET_initServices() {
@@ -98,6 +96,25 @@ function SHEET_initLogs() {
   const sheet = SHEET_getOrCreate(CONFIG.SHEET_NAMES.LOGS);
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(['timestamp', 'action', 'userId', 'detail']);
+  }
+}
+
+
+/**
+ * Pastikan header sheet lengkap.
+ * Dipakai untuk migrasi aman pada aplikasi yang sudah berjalan:
+ * - Jika sheet kosong, buat header lengkap.
+ * - Jika sheet lama belum punya kolom baru, tambahkan kolom di ujung kanan.
+ */
+function SHEET_ensureHeaders(sheet, requiredHeaders) {
+  if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) {
+    sheet.appendRow(requiredHeaders);
+    return;
+  }
+  const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const missing = requiredHeaders.filter(h => currentHeaders.indexOf(h) === -1);
+  if (missing.length) {
+    sheet.getRange(1, currentHeaders.length + 1, 1, missing.length).setValues([missing]);
   }
 }
 

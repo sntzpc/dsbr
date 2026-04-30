@@ -19,8 +19,11 @@ function navigateTo(pageId) {
 // BOOKING SELECT UPDATE HOOK
 // ============================================================
 document.addEventListener('change', function(e) {
-  if (e.target.id === 'book-service' || e.target.id === 'book-date') {
+  if (e.target.id === 'book-service') {
     updateBookSummary();
+  }
+  if (e.target.id === 'book-date') {
+    loadBookingSlots();
   }
 });
 

@@ -2,17 +2,27 @@
 // ============================================================
 
 function OPERATOR_getMyQueue(data) {
-  const { operatorId } = data;
-  const today = UTIL_todayString();
+  const resolvedOperatorId = OPERATOR_resolveOperatorId_(data);
+  if (!resolvedOperatorId) return [];
+  const today = data.date || UTIL_todayString();
   const queue = SHEET_readAll(CONFIG.SHEET_NAMES.QUEUE);
   return queue
-    .filter(q => q.operatorId === operatorId && q.date === today && q.status !== 'cancelled')
-    .sort((a, b) => parseInt(a.queueNumber) - parseInt(b.queueNumber));
+    .filter(q => q.operatorId === resolvedOperatorId && q.date === today && q.status !== 'cancelled')
+    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || parseInt(a.queueNumber || 0, 10) - parseInt(b.queueNumber || 0, 10));
+}
+
+function OPERATOR_resolveOperatorId_(data) {
+  if (data.operatorId) return data.operatorId;
+  const userId = data.userId || '';
+  const phone = data.phone || '';
+  const operators = SHEET_readAll(CONFIG.SHEET_NAMES.OPERATORS).filter(o => o.isActive === 'true');
+  const op = operators.find(o => (userId && o.userId === userId) || (phone && o.phone === phone));
+  return op ? op.operatorId : '';
 }
 
 function OPERATOR_callCustomer(data) {
   const { bookingId, seatNumber } = data;
-  const now = new Date().toISOString();
+  const now = UTIL_nowIso_();
   SHEET_updateRow(CONFIG.SHEET_NAMES.QUEUE, 'bookingId', bookingId, {
     status: 'called', calledAt: now, seatNumber: seatNumber || '1'
   });
@@ -24,7 +34,7 @@ function OPERATOR_callCustomer(data) {
 
 function OPERATOR_startService(data) {
   const { bookingId } = data;
-  const now = new Date().toISOString();
+  const now = UTIL_nowIso_();
   SHEET_updateRow(CONFIG.SHEET_NAMES.QUEUE, 'bookingId', bookingId, {
     status: 'in_progress', startedAt: now
   });
@@ -36,7 +46,7 @@ function OPERATOR_startService(data) {
 
 function OPERATOR_finishService(data) {
   const { bookingId, durationMinutes } = data;
-  const now = new Date().toISOString();
+  const now = UTIL_nowIso_();
   SHEET_updateRow(CONFIG.SHEET_NAMES.QUEUE, 'bookingId', bookingId, {
     status: 'done', finishedAt: now, durationMinutes: durationMinutes || ''
   });
@@ -45,6 +55,5 @@ function OPERATOR_finishService(data) {
   });
   return { success: true, finishedAt: now };
 }
-
 
 // ============================================================

@@ -1,12 +1,16 @@
 // ADMIN PANEL
 // ============================================================
 function adminTab(tab) {
-  ['dashboard','operators','services','settings'].forEach(t => {
-    document.getElementById(`admin-${t}`).classList.toggle('hidden', t !== tab);
+  const tabs = ['dashboard','calendar','operators','services','settings'];
+  tabs.forEach(t => {
+    const panel = document.getElementById(`admin-${t}`);
+    if (panel) panel.classList.toggle('hidden', t !== tab);
   });
   document.querySelectorAll('#page-admin .auth-tab').forEach((el, i) => {
-    el.classList.toggle('active', ['dashboard','operators','services','settings'][i] === tab);
+    el.classList.toggle('active', tabs[i] === tab);
   });
+  if (tab === 'dashboard') loadAdminDashboard();
+  if (tab === 'calendar') loadAdminCalendar();
   if (tab === 'operators') loadAdminOperators();
   if (tab === 'services') loadAdminServices();
   if (tab === 'settings') loadAdminSettingsForm();
@@ -30,16 +34,72 @@ async function loadAdminDashboard() {
       bookEl.innerHTML = '<div class="empty-text text-muted">Belum ada booking hari ini</div>';
     } else {
       bookEl.innerHTML = `<div class="table-wrap"><table>
-        <tr><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
+        <tr><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
         ${bookings.map(b => `<tr>
+          <td><b>${b.timeSlot || '-'}</b></td>
           <td>${b.customerName}</td>
-          <td>${b.operatorName.split(' ')[0]}</td>
+          <td>${(b.operatorName || '').split(' ')[0]}</td>
           <td>${b.serviceName}</td>
           <td>${statusBadge(b.status)}</td>
         </tr>`).join('')}
       </table></div>`;
     }
-  } catch(e) { statsEl.innerHTML = '<div class="text-muted text-small">Gagal memuat data</div>'; }
+  } catch(e) { statsEl.innerHTML = '<div class="text-muted text-small">Gagal memuat dashboard</div>'; }
+}
+
+async function loadAdminCalendar() {
+  const input = document.getElementById('admin-calendar-month');
+  const el = document.getElementById('admin-calendar-grid');
+  if (!input || !el) return;
+  if (!input.value) input.value = todayStr().slice(0, 7);
+  const [year, month] = input.value.split('-').map(Number);
+  el.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api('admin.getMonthlyCalendar', { year, month });
+    renderCalendarGrid(el, year, month, data.days, 'Admin');
+  } catch (err) {
+    el.innerHTML = '<div class="text-muted text-small">Gagal memuat kalender: '+err.message+'</div>';
+  }
+}
+
+function renderCalendarGrid(container, year, month, daysMap, sourceLabel) {
+  const first = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0).getDate();
+  const startPad = first.getDay(); // Minggu = 0
+  const cells = [];
+  for (let i = 0; i < startPad; i++) cells.push('<div class="calendar-cell empty-cell"></div>');
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const day = daysMap && daysMap[date] ? daysMap[date] : null;
+    const total = day ? day.total : 0;
+    cells.push(`
+      <button type="button" class="calendar-cell ${total ? 'has-booking' : ''}" onclick="showCalendarDay('${date}', '${encodeURIComponent(JSON.stringify(day || {date,total:0,bookings:[]}))}')">
+        <span class="calendar-day-num">${d}</span>
+        <span class="calendar-total">${total ? total + ' booking' : '–'}</span>
+      </button>`);
+  }
+  container.innerHTML = `
+    <div class="calendar-weekdays"><span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span></div>
+    <div class="calendar-grid">${cells.join('')}</div>`;
+}
+
+function showCalendarDay(date, encodedDay) {
+  const day = JSON.parse(decodeURIComponent(encodedDay));
+  const bookings = day.bookings || [];
+  openModal(`
+    <div class="modal-title">Booking ${formatDate(date)}</div>
+    ${!bookings.length ? '<div class="empty-text text-muted">Belum ada booking pada tanggal ini.</div>' : `
+      <div class="table-wrap"><table>
+        <tr><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
+        ${bookings.map(b => `<tr>
+          <td><b>${b.timeSlot || '-'}</b></td>
+          <td>${b.customerName}<div class="text-muted text-small">${b.phone || ''}</div></td>
+          <td>${b.operatorName || '-'}</td>
+          <td>${b.serviceName || '-'}</td>
+          <td>${statusBadge(b.status)}</td>
+        </tr>`).join('')}
+      </table></div>`}
+  `);
 }
 
 async function loadAdminOperators() {

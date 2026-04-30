@@ -18,6 +18,10 @@ function UTIL_hashSimple(str) {
   return 'h_' + Math.abs(hash).toString(16) + '_' + str.length;
 }
 
+function UTIL_nowIso_() {
+  return new Date().toISOString();
+}
+
 function UTIL_todayString() {
   const d = new Date();
   const tz = Session.getScriptTimeZone();

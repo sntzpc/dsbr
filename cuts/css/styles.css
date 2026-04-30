@@ -341,3 +341,29 @@ tr:last-child td{border:none}
 .font-head{font-family:var(--font-head)}
 .fw-bold{font-weight:700}
 .hidden{display:none!important}
+
+/* ============================================================
+   ENHANCE BOOKING TIME SLOT & CALENDAR
+   ============================================================ */
+.time-slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.time-slot-btn{
+  border:1px solid var(--border);background:var(--bg3);color:var(--text);
+  border-radius:12px;padding:10px 8px;display:flex;flex-direction:column;gap:3px;
+  align-items:center;justify-content:center;cursor:pointer;font-family:inherit;
+}
+.time-slot-btn span{font-size:.68rem;color:var(--text2)}
+.time-slot-btn.selected{border-color:var(--gold);background:rgba(212,168,67,.12);box-shadow:0 0 0 1px rgba(212,168,67,.18) inset}
+.time-slot-btn.disabled,.time-slot-btn:disabled{opacity:.45;cursor:not-allowed;text-decoration:line-through}
+.calendar-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;color:var(--text3);font-size:.72rem;text-align:center}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.calendar-cell{
+  min-height:72px;border:1px solid var(--border);background:var(--bg3);color:var(--text);
+  border-radius:12px;padding:8px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;
+  font-family:inherit;cursor:pointer;
+}
+.calendar-cell.empty-cell{opacity:0;pointer-events:none}
+.calendar-cell.has-booking{border-color:rgba(212,168,67,.55);background:rgba(212,168,67,.10)}
+.calendar-day-num{font-weight:800;font-family:var(--font-head)}
+.calendar-total{font-size:.68rem;color:var(--text2)}
+.calendar-cell.has-booking .calendar-total{color:var(--gold);font-weight:700}
+@media(max-width:420px){.time-slot-grid{grid-template-columns:repeat(2,1fr)}.calendar-cell{min-height:58px;padding:6px}.calendar-total{font-size:.6rem}}

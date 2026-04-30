@@ -86,6 +86,7 @@ function UTIL_processRequest(e) {
       'admin.deleteService'   : () => ADMIN_deleteService(data),
       'admin.getAllUsers'      : () => ADMIN_getAllUsers(),
       'admin.getAllBookings'   : () => ADMIN_getAllBookings(data),
+      'admin.getMonthlyCalendar': () => ADMIN_getMonthlyCalendar(data),
 
       // --- REPORT ---
       'report.daily'          : () => REPORT_daily(data),

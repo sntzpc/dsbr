@@ -17,7 +17,7 @@ async function loadMyQueueStatus() {
     }
     card.classList.remove('hidden');
     document.getElementById('my-queue-num').textContent = status.queueNumber;
-    document.getElementById('my-op-name').textContent = '✂ ' + status.operatorName;
+    document.getElementById('my-op-name').textContent = '✂ ' + status.operatorName + (status.timeSlot ? ' · 🕒 ' + status.timeSlot : '');
     document.getElementById('my-in-front').textContent = status.inFront > 0 ? `${status.inFront} orang di depan` : 'Giliran berikutnya!';
 
     const badges = {
@@ -44,6 +44,7 @@ async function loadHomeQueue() {
       <div class="queue-card status-${q.status}">
         <div class="queue-num">${q.queueNumber}</div>
         <div class="queue-initial">${q.customerInitial}</div>
+        <div class="queue-op">${q.timeSlot || ''}</div>
         <div class="queue-op">${q.operatorName.split(' ')[0]}</div>
         <div style="margin-top:4px">${statusMini(q.status)}</div>
         ${q.status==='in_progress'&&q.durationMinutes?`<div class="queue-op">${q.durationMinutes}mnt</div>`:''}

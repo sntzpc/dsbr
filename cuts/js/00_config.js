@@ -9,6 +9,7 @@ let STATE = {
   user          : null,
   selectedOp    : null,
   selectedDate  : null,
+  selectedTimeSlot: null,
   operatorId    : null, // untuk operator login
   refreshTimer  : null,
   shopName      : 'BarberKu',

@@ -53,7 +53,7 @@ function afterLogin(user) {
     document.getElementById('bottom-nav').classList.add('hidden');
     document.getElementById('bottom-nav-op').classList.remove('hidden');
     navigateTo('page-operator');
-    resolveOperatorId(user).then(loadOperatorQueue);
+    resolveOperatorId(user).then(() => { loadOperatorQueue(); loadOperatorCalendar(); });
     // Set topbar
     document.getElementById('op-name-topbar').textContent = user.name;
     document.getElementById('op-avatar-topbar').textContent = user.name.charAt(0);
