@@ -1,493 +1,303 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>Barbershop App</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <style>
-    body { background: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
-    .navbar-brand { font-weight: 700; letter-spacing: 1px; }
-    .card { border: none; border-radius: 1rem; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
-    .queue-list { max-height: 60vh; overflow-y: auto; }
-    .badge-status { font-size: 0.8rem; }
-    .timer { font-family: monospace; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>BarberKu — Booking & Antrian</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="css/styles.css"/>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container">
-      <a class="navbar-brand" href="#"><i class="bi bi-scissors"></i> BARBERSHOP</a>
-      <div class="ms-auto" id="userInfo"></div>
-    </div>
-  </nav>
+<div id="toast"></div>
 
-  <div class="container py-4" id="appContent">
-    <!-- Konten dinamis dirender di sini -->
+<!-- ===== MODAL ===== -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-sheet" id="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="modal-content"></div>
   </div>
+</div>
 
-  <script>
-    // ==================== KONFIGURASI ====================
-    const API_URL = 'https://script.google.com/macros/s/AKfycbzOkKJQCbt3508e8SQnGmfVWb_6zeAJT9rGABy-q7v38rkbMWKjVcZLmI8I4TpUSM5b/exec'; // GANTI DENGAN URL DEPLOYMENT
-    let session = { role: null, token: null, user: null };
+<div id="app">
 
-    // ==================== HELPER API ====================
-    async function apiCall(action, data = {}) {
-      let options = {
-        method: 'POST',
-        body: JSON.stringify({ action, data })
-      };
-      // Untuk GET, gunakan query string
-      if (Object.keys(data).length === 0 && action !== 'createBooking') {
-        options = { method: 'GET' };
-        const url = new URL(API_URL);
-        url.searchParams.set('action', action);
-        const response = await fetch(url.toString());
-        const json = await response.json();
-        if (!json.success) throw new Error(json.error);
-        return json.data;
-      }
-      const response = await fetch(API_URL, options);
-      const json = await response.json();
-      if (!json.success) throw new Error(json.error);
-      return json.data;
-    }
+<!-- ===== AUTH PAGE ===== -->
+<div class="page active" id="page-auth">
+  <div class="container" style="margin:auto">
+    <div class="auth-logo"><span>✂</span> BarberKu</div>
+    <div class="auth-tagline">Booking pangkas rambut jadi lebih mudah</div>
+    <div class="card">
+      <div class="auth-tabs">
+        <div class="auth-tab active" onclick="switchAuthTab('login')">Masuk</div>
+        <div class="auth-tab" onclick="switchAuthTab('register')">Daftar</div>
+      </div>
+      <!-- LOGIN -->
+      <div id="form-login">
+        <div class="field"><label>Nomor HP</label><input type="tel" id="l-phone" placeholder="08xxxxxxxxxx"/></div>
+        <div class="field"><label>Password</label><input type="password" id="l-pass" placeholder="Password Anda"/></div>
+        <button class="btn btn-gold" onclick="doLogin()">Masuk</button>
+        <div style="text-align:center;margin-top:14px;font-size:.8rem;color:var(--text2)">Demo: <b>08123456789</b> / <b>admin123</b> (Admin)</div>
+      </div>
+      <!-- REGISTER -->
+      <div id="form-register" class="hidden">
+        <div class="field"><label>Nama Lengkap</label><input type="text" id="r-name" placeholder="Nama Anda"/></div>
+        <div class="field"><label>Nomor HP</label><input type="tel" id="r-phone" placeholder="08xxxxxxxxxx"/></div>
+        <div class="field"><label>Email (opsional)</label><input type="email" id="r-email" placeholder="email@contoh.com"/></div>
+        <div class="field"><label>Password</label><input type="password" id="r-pass" placeholder="Min. 6 karakter"/></div>
+        <button class="btn btn-gold" onclick="doRegister()">Buat Akun</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-    // ==================== SESSION & NAVIGASI ====================
-    function render(content) {
-      document.getElementById('appContent').innerHTML = content;
-    }
-
-    function checkSession() {
-      const saved = localStorage.getItem('barbershop_session');
-      if (saved) {
-        session = JSON.parse(saved);
-        return true;
-      }
-      return false;
-    }
-
-    function saveSession() {
-      localStorage.setItem('barbershop_session', JSON.stringify(session));
-    }
-
-    function logout() {
-      localStorage.removeItem('barbershop_session');
-      session = {};
-      location.reload();
-    }
-
-    function showUserInfo() {
-      if (!session.role) return;
-      let info = session.role === 'customer' ? session.user.name : (session.role === 'operator' ? session.user.name : 'Admin');
-      document.getElementById('userInfo').innerHTML = `<span class="text-light me-3">Halo, ${info}</span>
-        <button class="btn btn-outline-light btn-sm" onclick="logout()">Keluar</button>`;
-    }
-
-    // ==================== VIEW: LOGIN ====================
-    function loginView() {
-      render(`
-        <div class="row justify-content-center">
-          <div class="col-md-5 col-lg-4">
-            <div class="card p-4">
-              <h4 class="text-center mb-3"><i class="bi bi-person"></i> Masuk</h4>
-              <div class="mb-3">
-                <label class="form-label">Saya adalah</label>
-                <select id="loginRole" class="form-select">
-                  <option value="customer">Pelanggan</option>
-                  <option value="operator">Operator</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div id="loginFields"></div>
-              <button class="btn btn-dark w-100 mt-3" onclick="doLogin()">Masuk</button>
-              <hr>
-              <small>Belum punya akun? <a href="#" onclick="registerView()">Daftar</a></small>
-            </div>
-          </div>
+<!-- ===== CUSTOMER: HOME ===== -->
+<div class="page" id="page-home">
+  <div class="topbar">
+    <div class="topbar-title"><span>✂</span> BarberKu</div>
+    <div class="topbar-user">
+      <span id="usr-name-topbar"></span>
+      <div class="avatar" id="usr-avatar-topbar"></div>
+    </div>
+  </div>
+  <div class="container">
+    <!-- My Queue Status -->
+    <div id="my-status-card" class="card card-gold hidden">
+      <div class="section-label">Status Antrianku</div>
+      <div class="row">
+        <div>
+          <div class="big-queue" id="my-queue-num">–</div>
+          <div class="text-muted text-small mt-4">Nomor Antrian</div>
         </div>
-      `);
-      document.getElementById('loginRole').addEventListener('change', updateLoginFields);
-      updateLoginFields();
-    }
-
-    function updateLoginFields() {
-      const role = document.getElementById('loginRole').value;
-      let html = '';
-      if (role === 'admin') {
-        html = `<input id="username" class="form-control mb-2" placeholder="Username admin">
-                <input id="password" type="password" class="form-control mb-2" placeholder="Password">`;
-      } else if (role === 'operator') {
-        html = `<input id="username" class="form-control mb-2" placeholder="ID Operator">
-                <input id="password" type="password" class="form-control mb-2" placeholder="Password">`;
-      } else {
-        html = `<input id="phone" class="form-control mb-2" placeholder="Nomor HP">
-                <input id="password" type="password" class="form-control mb-2" placeholder="Password">`;
-      }
-      document.getElementById('loginFields').innerHTML = html;
-    }
-
-    async function doLogin() {
-      const role = document.getElementById('loginRole').value;
-      let payload = { role };
-      if (role === 'customer') {
-        payload.phone = document.getElementById('phone').value.trim();
-        payload.password = document.getElementById('password').value.trim();
-      } else {
-        payload.username = document.getElementById('username').value.trim();
-        payload.password = document.getElementById('password').value.trim();
-      }
-      try {
-        const res = await apiCall('login', payload);
-        session = { role: res.role, token: res.token || '', user: res.operator || res.customer || {} };
-        saveSession();
-        showUserInfo();
-        loadDashboard();
-      } catch (e) {
-        alert(e.message);
-      }
-    }
-
-    // ==================== VIEW: REGISTER ====================
-    function registerView() {
-      render(`
-        <div class="row justify-content-center">
-          <div class="col-md-5 col-lg-4">
-            <div class="card p-4">
-              <h4 class="text-center mb-3"><i class="bi bi-person-plus"></i> Daftar Pelanggan</h4>
-              <input id="regName" class="form-control mb-2" placeholder="Nama lengkap">
-              <input id="regPhone" class="form-control mb-2" placeholder="Nomor HP">
-              <input id="regPassword" type="password" class="form-control mb-2" placeholder="Password">
-              <button class="btn btn-success w-100 mt-2" onclick="doRegister()">Daftar</button>
-              <hr>
-              <small>Sudah punya akun? <a href="#" onclick="loginView()">Masuk</a></small>
-            </div>
-          </div>
+        <div style="text-align:right">
+          <div id="my-status-badge"></div>
+          <div class="text-small text-muted mt-8" id="my-op-name"></div>
+          <div class="text-small text-muted mt-4" id="my-in-front"></div>
         </div>
-      `);
-    }
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="my-progress-fill" style="width:0%"></div></div>
+      <div id="my-called-notice" class="hidden" style="background:rgba(212,168,67,.12);border:1px solid rgba(212,168,67,.3);border-radius:8px;padding:12px;text-align:center;font-size:.85rem;color:var(--gold)">
+        🎉 Giliran Anda sudah tiba! Silakan menuju kursi.
+      </div>
+    </div>
 
-    async function doRegister() {
-      const name = document.getElementById('regName').value.trim();
-      const phone = document.getElementById('regPhone').value.trim();
-      const password = document.getElementById('regPassword').value.trim();
-      if (!name || !phone || !password) return alert('Semua field wajib diisi');
-      try {
-        await apiCall('registerCustomer', { name, phone, password });
-        alert('Pendaftaran berhasil, silakan login');
-        loginView();
-      } catch (e) {
-        alert(e.message);
-      }
-    }
+    <!-- Quick Book CTA -->
+    <div class="card" id="cta-book-card">
+      <div class="section-label">Booking Sekarang</div>
+      <div class="section-title">Tampil Keren<br/>Tanpa Antri Lama</div>
+      <div class="text-muted text-small" style="margin-bottom:16px">Pilih operator & waktu favoritmu</div>
+      <button class="btn btn-gold" onclick="navigateTo('page-book')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="18" height="18"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Buat Booking
+      </button>
+    </div>
 
-    // ==================== DASHBOARD CUSTOMER ====================
-    async function customerDashboard() {
-      try {
-        const today = new Date().toISOString().slice(0,10);
-        const [booking, operators] = await Promise.all([
-          apiCall('getCustomerBooking', { customerId: session.user.id }),
-          apiCall('getOperators')
-        ]);
+    <!-- Live Queue Today -->
+    <div class="card">
+      <div class="row mb-0" style="margin-bottom:12px">
+        <div class="section-label" style="margin-bottom:0"><span class="live-dot"></span>Antrian Hari Ini</div>
+        <button class="btn btn-outline btn-sm" onclick="loadHomeQueue()">Refresh</button>
+      </div>
+      <div id="home-queue-list"><div class="spinner"></div></div>
+    </div>
 
-        if (booking && booking.bookingDate === today && booking.status !== 'cancelled') {
-          renderBookingStatus(booking, operators);
-        } else {
-          renderBookingForm(operators);
-        }
-        showUserInfo();
-      } catch (e) {
-        alert(e.message);
-      }
-    }
+    <!-- Capacity Info -->
+    <div class="card">
+      <div class="section-label">Kapasitas Hari Ini</div>
+      <div id="home-capacity">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-    function renderBookingForm(operators) {
-      let opts = operators.map(o => `<option value="${o.id}">${o.name} (Kursi ${o.chair})</option>`).join('');
-      render(`
-        <div class="row justify-content-center">
-          <div class="col-md-6 col-lg-4">
-            <div class="card p-4">
-              <h5 class="text-center"><i class="bi bi-calendar-check"></i> Booking Hari Ini</h5>
-              <label class="form-label mt-3">Pilih Pemangkas</label>
-              <select id="opSelect" class="form-select">${opts}</select>
-              <button class="btn btn-dark w-100 mt-4" onclick="createBooking()">Pesan Sekarang</button>
-            </div>
-          </div>
+<!-- ===== CUSTOMER: BOOKING ===== -->
+<div class="page" id="page-book">
+  <div class="topbar">
+    <div class="topbar-title">Buat Booking</div>
+    <button class="btn btn-outline btn-sm" onclick="navigateTo('page-home')" style="width:auto">← Kembali</button>
+  </div>
+  <div class="container">
+    <div class="card">
+      <div class="field">
+        <label>Tanggal Kunjungan</label>
+        <input type="date" id="book-date" onchange="loadBookingSlots()"/>
+      </div>
+      <div class="field">
+        <label>Pilih Operator / Pemangkas</label>
+        <div id="operator-list-book"><div class="spinner"></div></div>
+      </div>
+      <div class="field">
+        <label>Pilih Layanan</label>
+        <select id="book-service"><option value="">-- Pilih Layanan --</option></select>
+      </div>
+      <div class="field">
+        <label>Catatan (opsional)</label>
+        <input type="text" id="book-notes" placeholder="Contoh: potong pendek di atas, tipis samping"/>
+      </div>
+      <div class="divider"></div>
+      <div id="book-summary" class="hidden card" style="background:var(--bg3);margin-bottom:14px">
+        <div class="section-label">Ringkasan Booking</div>
+        <div id="book-summary-content"></div>
+      </div>
+      <button class="btn btn-gold" onclick="doBooking()">Konfirmasi Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CUSTOMER: MY BOOKINGS ===== -->
+<div class="page" id="page-bookings">
+  <div class="topbar">
+    <div class="topbar-title">Riwayat Booking</div>
+  </div>
+  <div class="container">
+    <div id="my-bookings-list"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ===== CUSTOMER: QUEUE LIVE ===== -->
+<div class="page" id="page-queue">
+  <div class="topbar">
+    <div class="topbar-title"><span class="live-dot"></span>Antrian Live</div>
+    <button class="btn btn-outline btn-sm" onclick="loadQueuePage()" style="width:auto">Refresh</button>
+  </div>
+  <div class="container">
+    <div id="queue-page-content"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ===== OPERATOR PAGE ===== -->
+<div class="page" id="page-operator">
+  <div class="topbar">
+    <div class="topbar-title">Panel Operator</div>
+    <div class="topbar-user">
+      <span id="op-name-topbar" class="text-small text-muted"></span>
+      <div class="avatar" id="op-avatar-topbar"></div>
+    </div>
+  </div>
+  <div class="container">
+    <div class="card card-gold">
+      <div class="section-label">Antrianku Hari Ini</div>
+      <div id="op-stats" class="stat-row">
+        <div class="stat-box"><div class="stat-num" id="op-count-wait">–</div><div class="stat-label">Menunggu</div></div>
+        <div class="stat-box"><div class="stat-num" id="op-count-done">–</div><div class="stat-label">Selesai</div></div>
+      </div>
+      <button class="btn btn-outline" onclick="loadOperatorQueue()">↻ Refresh Antrian</button>
+    </div>
+    <div id="op-queue-list"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ===== ADMIN PAGE ===== -->
+<div class="page" id="page-admin">
+  <div class="topbar">
+    <div class="topbar-title">Admin Panel</div>
+    <button class="btn btn-danger btn-sm" onclick="doLogout()" style="width:auto">Keluar</button>
+  </div>
+  <div class="container">
+    <!-- Admin Tabs -->
+    <div class="auth-tabs" style="margin-bottom:20px">
+      <div class="auth-tab active" onclick="adminTab('dashboard')">Dashboard</div>
+      <div class="auth-tab" onclick="adminTab('operators')">Operator</div>
+      <div class="auth-tab" onclick="adminTab('services')">Layanan</div>
+      <div class="auth-tab" onclick="adminTab('settings')">Setting</div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="admin-dashboard">
+      <div class="card">
+        <div class="section-label">Ringkasan Hari Ini</div>
+        <div id="admin-daily-stats"><div class="spinner"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-label">Booking Hari Ini</div>
+        <div id="admin-today-bookings"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Operators -->
+    <div id="admin-operators" class="hidden">
+      <div class="card">
+        <div class="row" style="margin-bottom:16px">
+          <div class="fw-bold font-head">Daftar Operator</div>
+          <button class="btn btn-gold btn-sm" onclick="showAddOperatorModal()">+ Tambah</button>
         </div>
-      `);
-    }
+        <div id="admin-op-list"><div class="spinner"></div></div>
+      </div>
+    </div>
 
-    async function createBooking() {
-      const opId = document.getElementById('opSelect').value;
-      const today = new Date().toISOString().slice(0,10);
-      try {
-        await apiCall('createBooking', {
-          customerId: session.user.id,
-          customerName: session.user.name,
-          operatorId: opId,
-          bookingDate: today
-        });
-        alert('Booking berhasil!');
-        customerDashboard();
-      } catch (e) {
-        alert(e.message);
-      }
-    }
-
-    function renderBookingStatus(booking, operators) {
-      const op = operators.find(o => o.id == booking.operatorId) || {};
-      render(`
-        <div class="row justify-content-center">
-          <div class="col-md-8 col-lg-5">
-            <div class="card p-4 text-center">
-              <h4><i class="bi bi-person-badge"></i> Booking Saya</h4>
-              <h2 class="display-4">#${booking.queueNumber}</h2>
-              <p>Pemangkas: <strong>${booking.operatorName}</strong> (Kursi ${op.chair || '?'})</p>
-              <p>Status: <span class="badge bg-${booking.status === 'called' ? 'success' : 'warning'}">${booking.status}</span></p>
-              <div id="liveTimer" class="mt-3"></div>
-              <button class="btn btn-outline-danger mt-3" onclick="cancelMyBooking('${booking.id}')">Batalkan</button>
-            </div>
-            <div class="card p-4 mt-3">
-              <h5>Antrian Real-time</h5>
-              <div class="queue-list" id="queueList">Memuat...</div>
-            </div>
-          </div>
+    <!-- Services -->
+    <div id="admin-services" class="hidden">
+      <div class="card">
+        <div class="row" style="margin-bottom:16px">
+          <div class="fw-bold font-head">Daftar Layanan</div>
+          <button class="btn btn-gold btn-sm" onclick="showAddServiceModal()">+ Tambah</button>
         </div>
-      `);
-      startQueuePolling(booking.operatorId);
-      if (booking.status === 'called') startCalledTimer(booking.startTime);
-    }
+        <div id="admin-svc-list"><div class="spinner"></div></div>
+      </div>
+    </div>
 
-    async function cancelMyBooking(bookingId) {
-      if (!confirm('Yakin ingin membatalkan?')) return;
-      try {
-        await apiCall('cancelBooking', { bookingId });
-        customerDashboard();
-      } catch (e) { alert(e.message); }
-    }
+    <!-- Settings -->
+    <div id="admin-settings" class="hidden">
+      <div class="card">
+        <div class="section-label">Pengaturan Barbershop</div>
+        <div id="admin-settings-form"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-    let queueInterval, timerInterval;
-    function startQueuePolling(operatorId) {
-      if (queueInterval) clearInterval(queueInterval);
-      const updateList = async () => {
-        const today = new Date().toISOString().slice(0,10);
-        const queue = await apiCall('getQueueStatus', { operatorId, bookingDate: today });
-        let html = '';
-        queue.forEach(b => {
-          let statusBadge = b.status === 'called' ? 'success' : 'warning';
-          html += `<div class="d-flex justify-content-between border-bottom py-2">
-            <span>#${b.queueNumber} - ${b.customerName}</span>
-            <span class="badge bg-${statusBadge}">${b.status}</span>`;
-          if (b.status === 'called') html += ` <span class="timer" id="timer-${b.id}">-</span>`;
-          html += `</div>`;
-        });
-        document.getElementById('queueList').innerHTML = html || '<p class="text-muted">Belum ada antrian</p>';
-        // update timer untuk yang called
-        queue.forEach(b => { if (b.status === 'called' && b.startTime) updateTimer(b.id, b.startTime); });
-      };
-      updateList();
-      queueInterval = setInterval(updateList, 5000);
-    }
+<!-- ===== BOTTOM NAV (Customer) ===== -->
+<nav class="bottom-nav hidden" id="bottom-nav">
+  <div class="nav-item active" id="nav-home" onclick="navigateTo('page-home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Home<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" id="nav-book" onclick="navigateTo('page-book')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Booking<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" id="nav-queue" onclick="navigateTo('page-queue');loadQueuePage()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Antrian<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" id="nav-bookings" onclick="navigateTo('page-bookings');loadMyBookings()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Riwayat<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" id="nav-logout" onclick="doLogout()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Keluar<div class="nav-dot"></div>
+  </div>
+</nav>
 
-    function startCalledTimer(startTime) {
-      if (timerInterval) clearInterval(timerInterval);
-      const update = () => {
-        const el = document.getElementById('liveTimer');
-        if (!el) { clearInterval(timerInterval); return; }
-        const elapsed = Math.floor((Date.now() - new Date(startTime).getTime())/1000);
-        const mins = Math.floor(elapsed/60);
-        const secs = elapsed % 60;
-        el.innerHTML = `Sedang dipangkas: <strong>${mins}:${secs.toString().padStart(2,'0')}</strong>`;
-      };
-      update();
-      timerInterval = setInterval(update, 1000);
-    }
+<!-- ===== OPERATOR NAV ===== -->
+<nav class="bottom-nav hidden" id="bottom-nav-op">
+  <div class="nav-item active" onclick="navigateTo('page-operator');loadOperatorQueue()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Antrianku<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" onclick="navigateTo('page-queue');loadQueuePage()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Live Antrian<div class="nav-dot"></div>
+  </div>
+  <div class="nav-item" onclick="doLogout()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Keluar<div class="nav-dot"></div>
+  </div>
+</nav>
 
-    function updateTimer(bookingId, startTime) {
-      const el = document.getElementById(`timer-${bookingId}`);
-      if (!el) return;
-      const elapsed = Math.floor((Date.now() - new Date(startTime).getTime())/1000);
-      const mins = Math.floor(elapsed/60);
-      const secs = elapsed % 60;
-      el.textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
-    }
+</div><!-- #app -->
 
-    window.addEventListener('beforeunload', () => {
-      if (queueInterval) clearInterval(queueInterval);
-      if (timerInterval) clearInterval(timerInterval);
-    });
-
-    // ==================== DASHBOARD OPERATOR ====================
-    async function operatorDashboard() {
-      render(`<div class="row">
-        <div class="col-12"><h4><i class="bi bi-clipboard-check"></i> Antrian Saya</h4>
-        <button class="btn btn-primary mb-3" onclick="callNextCustomer()">Panggil Berikutnya</button>
-        <div id="operatorQueue"></div>
-        </div>
-      </div>`);
-      showUserInfo();
-      loadOperatorQueue();
-      operatorPollInterval = setInterval(loadOperatorQueue, 5000);
-    }
-
-    let operatorPollInterval;
-    async function loadOperatorQueue() {
-      const opId = session.user.id;
-      const today = new Date().toISOString().slice(0,10);
-      const bookings = await apiCall('getBookings', { operatorId: opId, bookingDate: today });
-      const waiting = bookings.filter(b => ['waiting','called'].includes(b.status));
-      let html = '';
-      if (waiting.length === 0) html = '<p class="text-muted">Belum ada antrian</p>';
-      else {
-        waiting.sort((a,b) => a.queueNumber - b.queueNumber);
-        html = `<ul class="list-group">`;
-        waiting.forEach(b => {
-          let badge = b.status === 'called' ? 'success' : 'secondary';
-          html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-            <span>#${b.queueNumber} - ${b.customerName}</span>
-            <div>
-              <span class="badge bg-${badge} me-2">${b.status}</span>
-              ${b.status === 'called' ? `<button class="btn btn-sm btn-success" onclick="finishBookingOp('${b.id}')">Selesai</button>` : ''}
-            </div>
-          </li>`;
-        });
-        html += `</ul>`;
-      }
-      document.getElementById('operatorQueue').innerHTML = html;
-    }
-
-    async function callNextCustomer() {
-      try {
-        await apiCall('callNext', { operatorId: session.user.id });
-        loadOperatorQueue();
-      } catch (e) { alert(e.message); }
-    }
-
-    async function finishBookingOp(bookingId) {
-      try {
-        await apiCall('finishBooking', { bookingId });
-        loadOperatorQueue();
-      } catch (e) { alert(e.message); }
-    }
-
-    window.addEventListener('beforeunload', () => { if (operatorPollInterval) clearInterval(operatorPollInterval); });
-
-    // ==================== DASHBOARD ADMIN ====================
-    async function adminDashboard() {
-      render(`
-        <ul class="nav nav-tabs mb-3" id="adminTabs">
-          <li class="nav-item"><a class="nav-link active" href="#" onclick="loadOperatorsAdmin()">Operator</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="loadSettingsAdmin()">Pengaturan</a></li>
-          <li class="nav-item"><a class="nav-link" href="#" onclick="loadReportsAdmin()">Laporan</a></li>
-        </ul>
-        <div id="adminContent"></div>
-      `);
-      showUserInfo();
-      loadOperatorsAdmin();
-    }
-
-    async function loadOperatorsAdmin() {
-      const ops = await apiCall('getOperators');
-      let html = `<button class="btn btn-dark mb-3" onclick="showAddOperator()">+ Tambah Operator</button>
-        <table class="table table-bordered">
-        <thead><tr><th>Nama</th><th>Kursi</th><th>Kapasitas</th><th>Aksi</th></tr></thead><tbody>`;
-      ops.forEach(o => {
-        html += `<tr>
-          <td>${o.name}</td><td>${o.chair}</td><td>${o.dailyCapacity}</td>
-          <td><button class="btn btn-sm btn-warning" onclick="editOperator('${o.id}')">Edit</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteOperator('${o.id}')">Hapus</button></td></tr>`;
-      });
-      html += `</tbody></table>`;
-      document.getElementById('adminContent').innerHTML = html;
-    }
-
-    function showAddOperator() {
-      const html = `<div class="card p-3 mt-2">
-        <h5>Tambah Operator</h5>
-        <input id="opName" class="form-control mb-1" placeholder="Nama">
-        <input id="opChair" class="form-control mb-1" placeholder="Kursi (nomor)">
-        <input id="opCap" class="form-control mb-1" placeholder="Kapasitas harian">
-        <input id="opPass" class="form-control mb-1" placeholder="Password" value="op123">
-        <button class="btn btn-success" onclick="addOperatorAct()">Simpan</button>
-      </div>`;
-      document.getElementById('adminContent').innerHTML += html;
-    }
-
-    async function addOperatorAct() {
-      const data = {
-        name: document.getElementById('opName').value,
-        chair: document.getElementById('opChair').value,
-        dailyCapacity: document.getElementById('opCap').value,
-        password: document.getElementById('opPass').value
-      };
-      await apiCall('addOperator', data);
-      loadOperatorsAdmin();
-    }
-
-    function editOperator(id) { /* implement: tampilkan form update, panggil updateOperator */ alert('Fitur edit via API siap, implementasi UI disederhanakan'); }
-
-    async function deleteOperator(id) {
-      if (!confirm('Hapus operator?')) return;
-      await apiCall('deleteOperator', { id });
-      loadOperatorsAdmin();
-    }
-
-    async function loadSettingsAdmin() {
-      const settings = await apiCall('getSettings');
-      let html = `<div class="card p-3">
-        <h5>Pengaturan Toko</h5>
-        <label>Nama Barbershop</label>
-        <input id="shopName" class="form-control mb-2" value="${settings.shopName || ''}">
-        <label>Username Admin</label>
-        <input id="adminUser" class="form-control mb-2" value="${settings.adminUsername || ''}">
-        <label>Password Admin</label>
-        <input id="adminPass" class="form-control mb-2" value="${settings.adminPassword || ''}">
-        <button class="btn btn-dark" onclick="saveSettings()">Simpan</button>
-      </div>`;
-      document.getElementById('adminContent').innerHTML = html;
-    }
-
-    async function saveSettings() {
-      const data = {
-        shopName: document.getElementById('shopName').value,
-        adminUsername: document.getElementById('adminUser').value,
-        adminPassword: document.getElementById('adminPass').value
-      };
-      await apiCall('updateSettings', data);
-      alert('Pengaturan disimpan');
-    }
-
-    async function loadReportsAdmin() {
-      const bookings = await apiCall('getBookings', {});
-      let html = `<h5>Semua Booking</h5><div class="table-responsive"><table class="table table-sm">
-        <thead><tr><th>Tgl</th><th>Pelanggan</th><th>Operator</th><th>Antrian</th><th>Status</th></tr></thead><tbody>`;
-      bookings.forEach(b => {
-        html += `<tr><td>${b.bookingDate}</td><td>${b.customerName}</td><td>${b.operatorName}</td><td>${b.queueNumber}</td><td>${b.status}</td></tr>`;
-      });
-      html += `</tbody></table></div>`;
-      document.getElementById('adminContent').innerHTML = html;
-    }
-
-    // ==================== ROUTER ====================
-    function loadDashboard() {
-      switch (session.role) {
-        case 'customer': customerDashboard(); break;
-        case 'operator': operatorDashboard(); break;
-        case 'admin':    adminDashboard(); break;
-        default:         loginView();
-      }
-    }
-
-    // ==================== INIT ====================
-    window.onload = function() {
-      if (checkSession()) {
-        showUserInfo();
-        loadDashboard();
-      } else {
-        loginView();
-      }
-    };
-  </script>
+<script src="js/00_config.js"></script>
+<script src="js/01_api.js"></script>
+<script src="js/02_ui.js"></script>
+<script src="js/03_auth.js"></script>
+<script src="js/04_home.js"></script>
+<script src="js/05_booking.js"></script>
+<script src="js/06_queue.js"></script>
+<script src="js/07_my_bookings.js"></script>
+<script src="js/08_operator.js"></script>
+<script src="js/09_admin.js"></script>
+<script src="js/10_utils.js"></script>
+<script src="js/11_app_init.js"></script>
 </body>
 </html>
