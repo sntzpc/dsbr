@@ -34,8 +34,9 @@ async function loadAdminDashboard() {
       bookEl.innerHTML = '<div class="empty-text text-muted">Belum ada booking hari ini</div>';
     } else {
       bookEl.innerHTML = `<div class="table-wrap"><table>
-        <tr><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
+        <tr><th>Order</th><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
         ${bookings.map(b => `<tr>
+          <td><b>#${displayOrderNo(b)}</b></td>
           <td><b>${b.timeSlot || '-'}</b></td>
           <td>${b.customerName}</td>
           <td>${(b.operatorName || '').split(' ')[0]}</td>
@@ -90,8 +91,9 @@ function showCalendarDay(date, encodedDay) {
     <div class="modal-title">Booking ${formatDate(date)}</div>
     ${!bookings.length ? '<div class="empty-text text-muted">Belum ada booking pada tanggal ini.</div>' : `
       <div class="table-wrap"><table>
-        <tr><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
+        <tr><th>Order</th><th>Jam</th><th>Nama</th><th>Operator</th><th>Layanan</th><th>Status</th></tr>
         ${bookings.map(b => `<tr>
+          <td><b>#${displayOrderNo(b)}</b></td>
           <td><b>${b.timeSlot || '-'}</b></td>
           <td>${b.customerName}<div class="text-muted text-small">${b.phone || ''}</div></td>
           <td>${b.operatorName || '-'}</td>

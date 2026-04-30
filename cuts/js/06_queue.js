@@ -6,7 +6,7 @@ async function loadQueuePage() {
   try {
     const queue = await api('queue.getToday', { date: todayStr() });
     if (!queue.length) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada antrian hari ini</div></div>';
+      el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada order hari ini</div></div>';
       return;
     }
     const groupByOp = {};
@@ -22,15 +22,16 @@ async function loadQueuePage() {
         <div class="queue-grid">
           ${groupByOp[opName].map(q => `
             <div class="queue-card status-${q.status}">
-              <div class="queue-num">${q.queueNumber}</div>
+              <div class="queue-num">${displayOrderNo(q)}</div>
               <div class="queue-initial">${q.customerInitial}</div>
-              ${q.status==='in_progress'?`<div class="queue-op text-green" style="color:var(--green)">✂ Memotong</div>`:''}
+              ${q.status==='in_progress'?`<div class="queue-op text-green" style="color:var(--green)">✂ Memotong</div>${renderRunningTimer(q.startedAt, true)}`:''}
               ${q.status==='called'?`<div class="queue-op" style="color:var(--gold)">Dipanggil</div>`:''}
               ${q.status==='done'?`<div class="queue-op">Selesai</div>`:''}
             </div>`).join('')}
         </div>
       </div>`).join('');
-  } catch(e) { el.innerHTML = '<div class="empty-text text-muted">Gagal memuat antrian</div>'; }
+    ensureRunningTimer();
+  } catch(e) { el.innerHTML = '<div class="empty-text text-muted">Gagal memuat order</div>'; }
 }
 
 // ============================================================

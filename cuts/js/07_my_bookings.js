@@ -21,7 +21,7 @@ async function loadMyBookings() {
           <div style="text-align:right">
             ${statusBadge(b.status)}
             <div class="text-gold fw-bold text-small mt-8">Rp${Number(b.price).toLocaleString('id')}</div>
-            <div class="text-muted text-small mt-4">Antrian #${b.queueNumber}</div>
+            <div class="text-muted text-small mt-4">Order #${displayOrderNo(b)}</div>
           </div>
         </div>
         ${b.status==='waiting'?`<div style="margin-top:12px"><button class="btn btn-danger btn-sm" onclick="cancelBooking('${b.bookingId}')">Batalkan Booking</button></div>`:''}

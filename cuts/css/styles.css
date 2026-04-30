@@ -367,3 +367,14 @@ tr:last-child td{border:none}
 .calendar-total{font-size:.68rem;color:var(--text2)}
 .calendar-cell.has-booking .calendar-total{color:var(--gold);font-weight:700}
 @media(max-width:420px){.time-slot-grid{grid-template-columns:repeat(2,1fr)}.calendar-cell{min-height:58px;padding:6px}.calendar-total{font-size:.6rem}}
+
+/* ============================================================
+   LIVE RUNNING TIMER
+   ============================================================ */
+.running-timer{
+  display:inline-block;margin-top:6px;padding:4px 8px;
+  border-radius:999px;background:rgba(76,175,122,.10);
+  border:1px solid rgba(76,175,122,.28);
+  color:var(--green);font-size:.68rem;font-weight:700;
+}
+.queue-card .running-timer{font-size:.58rem;padding:3px 6px;margin-top:5px}

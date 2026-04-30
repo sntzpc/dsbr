@@ -12,6 +12,7 @@ let STATE = {
   selectedTimeSlot: null,
   operatorId    : null, // untuk operator login
   refreshTimer  : null,
+  runningTimer  : null,
   shopName      : 'BarberKu',
 };
 

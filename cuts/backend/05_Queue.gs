@@ -1,4 +1,4 @@
-// QUEUE_ — Antrian Real-Time
+// QUEUE_ — Order Real-Time
 // ============================================================
 
 function QUEUE_getToday(data) {
@@ -6,10 +6,11 @@ function QUEUE_getToday(data) {
   const queue = SHEET_readAll(CONFIG.SHEET_NAMES.QUEUE);
   const todayQueue = queue
     .filter(q => q.date === today && q.status !== 'cancelled')
-    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || parseInt(a.queueNumber || 0, 10) - parseInt(b.queueNumber || 0, 10));
+    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || QUEUE_getOrderNumber_(a) - QUEUE_getOrderNumber_(b));
 
   return todayQueue.map(q => ({
     queueNumber    : q.queueNumber,
+    orderNumber    : q.orderNumber || q.queueNumber,
     customerInitial: q.customerName ? q.customerName.charAt(0).toUpperCase() + (q.customerName.charAt(1) || '') : '??',
     operatorName   : q.operatorName,
     serviceName    : q.serviceName || '',
@@ -37,7 +38,7 @@ function QUEUE_getStatus(data) {
   // Hitung posisi di antrian operator yang sama
   const operatorQueue = queue
     .filter(q => q.operatorId === myEntry.operatorId && q.date === today && q.status !== 'cancelled')
-    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || parseInt(a.queueNumber || 0, 10) - parseInt(b.queueNumber || 0, 10));
+    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || QUEUE_getOrderNumber_(a) - QUEUE_getOrderNumber_(b));
 
   const myIndex = operatorQueue.findIndex(q => q.bookingId === myEntry.bookingId);
   const inFront = operatorQueue.filter((q, i) => i < myIndex && (q.status === 'waiting' || q.status === 'called')).length;
@@ -45,6 +46,7 @@ function QUEUE_getStatus(data) {
   return {
     found          : true,
     queueNumber    : myEntry.queueNumber,
+    orderNumber    : myEntry.orderNumber || myEntry.queueNumber,
     status         : myEntry.status,
     operatorName   : myEntry.operatorName,
     timeSlot       : myEntry.timeSlot || '',
@@ -58,3 +60,7 @@ function QUEUE_getStatus(data) {
 
 
 // ============================================================
+
+function QUEUE_getOrderNumber_(row) {
+  return parseInt((row && (row.orderNumber || row.queueNumber)) || 0, 10) || 0;
+}

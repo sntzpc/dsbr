@@ -135,14 +135,14 @@ async function doBooking() {
       <div style="text-align:center;padding:20px 0">
         <div style="font-size:3rem;margin-bottom:12px">✅</div>
         <div class="modal-title">Booking Berhasil!</div>
-        <div class="text-muted text-small" style="margin-bottom:20px">Nomor antrian Anda</div>
-        <div class="big-queue">${result.queueNumber}</div>
+        <div class="text-muted text-small" style="margin-bottom:20px">Nomor order Anda</div>
+        <div class="big-queue">${displayOrderNo(result)}</div>
         <div class="text-muted text-small" style="margin-top:8px">Tanggal: ${formatDate(result.date)}</div>
         <div class="text-muted text-small">Jam Pelayanan: <b>${result.timeSlot}</b></div>
         <div class="text-muted text-small">Operator: ${result.operatorName}</div>
         <div class="text-muted text-small">Layanan: ${result.serviceName}</div>
         <div style="margin-top:24px">
-          <button class="btn btn-gold" onclick="closeModal();navigateTo('page-home');loadHomePage()">Pantau Antrian</button>
+          <button class="btn btn-gold" onclick="closeModal();navigateTo('page-home');loadHomePage()">Pantau Order</button>
         </div>
       </div>`);
     await loadBookingSlots();

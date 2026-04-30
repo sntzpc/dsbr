@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
-<title>BarberKu — Booking & Antrian</title>
+<title>BarberKu — Booking & Order</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="css/styles.css"/>
 </head>
@@ -61,11 +61,11 @@
   <div class="container">
     <!-- My Queue Status -->
     <div id="my-status-card" class="card card-gold hidden">
-      <div class="section-label">Status Antrianku</div>
+      <div class="section-label">Status Orderku</div>
       <div class="row">
         <div>
           <div class="big-queue" id="my-queue-num">–</div>
-          <div class="text-muted text-small mt-4">Nomor Antrian</div>
+          <div class="text-muted text-small mt-4">Nomor Order</div>
         </div>
         <div style="text-align:right">
           <div id="my-status-badge"></div>
@@ -93,7 +93,7 @@
     <!-- Live Queue Today -->
     <div class="card">
       <div class="row mb-0" style="margin-bottom:12px">
-        <div class="section-label" style="margin-bottom:0"><span class="live-dot"></span>Antrian Hari Ini</div>
+        <div class="section-label" style="margin-bottom:0"><span class="live-dot"></span>Order Hari Ini</div>
         <button class="btn btn-outline btn-sm" onclick="loadHomeQueue()">Refresh</button>
       </div>
       <div id="home-queue-list"><div class="spinner"></div></div>
@@ -160,7 +160,7 @@
 <!-- ===== CUSTOMER: QUEUE LIVE ===== -->
 <div class="page" id="page-queue">
   <div class="topbar">
-    <div class="topbar-title"><span class="live-dot"></span>Antrian Live</div>
+    <div class="topbar-title"><span class="live-dot"></span>Order Live</div>
     <button class="btn btn-outline btn-sm" onclick="loadQueuePage()" style="width:auto">Refresh</button>
   </div>
   <div class="container">
@@ -179,12 +179,12 @@
   </div>
   <div class="container">
     <div class="card card-gold">
-      <div class="section-label">Antrianku Hari Ini</div>
+      <div class="section-label">Orderku Hari Ini</div>
       <div id="op-stats" class="stat-row">
         <div class="stat-box"><div class="stat-num" id="op-count-wait">–</div><div class="stat-label">Menunggu</div></div>
         <div class="stat-box"><div class="stat-num" id="op-count-done">–</div><div class="stat-label">Selesai</div></div>
       </div>
-      <button class="btn btn-outline" onclick="loadOperatorQueue()">↻ Refresh Antrian</button>
+      <button class="btn btn-outline" onclick="loadOperatorQueue()">↻ Refresh Order</button>
     </div>
     <div class="card">
       <div class="row" style="margin-bottom:12px">
@@ -286,7 +286,7 @@
   </div>
   <div class="nav-item" id="nav-queue" onclick="navigateTo('page-queue');loadQueuePage()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Antrian<div class="nav-dot"></div>
+    Order<div class="nav-dot"></div>
   </div>
   <div class="nav-item" id="nav-bookings" onclick="navigateTo('page-bookings');loadMyBookings()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -302,11 +302,11 @@
 <nav class="bottom-nav hidden" id="bottom-nav-op">
   <div class="nav-item active" onclick="navigateTo('page-operator');loadOperatorQueue()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Antrianku<div class="nav-dot"></div>
+    Orderku<div class="nav-dot"></div>
   </div>
   <div class="nav-item" onclick="navigateTo('page-queue');loadQueuePage()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Live Antrian<div class="nav-dot"></div>
+    Live Order<div class="nav-dot"></div>
   </div>
   <div class="nav-item" onclick="doLogout()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round"/></svg>

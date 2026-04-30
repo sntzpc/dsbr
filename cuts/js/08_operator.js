@@ -19,16 +19,17 @@ async function loadOperatorQueue() {
     document.getElementById('op-count-done').textContent = done;
 
     if (!queue.length) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada antrian untukmu hari ini</div></div>';
+      el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada order untukmu hari ini</div></div>';
       return;
     }
     el.innerHTML = queue.map(q => `
       <div class="card" style="margin-bottom:12px">
         <div class="row">
           <div>
-            <div class="fw-bold font-head" style="font-size:1.2rem;color:var(--gold)">#${q.queueNumber} · ${q.timeSlot || 'Jam belum ada'}</div>
+            <div class="fw-bold font-head" style="font-size:1.2rem;color:var(--gold)">Order #${displayOrderNo(q)} · ${q.timeSlot || 'Jam belum ada'}</div>
             <div class="fw-bold mt-4">${q.customerName}</div>
             <div class="text-muted text-small mt-4">${q.serviceName || 'Layanan'} · ${q.operatorName}</div>
+            ${q.status==='in_progress'?renderRunningTimer(q.startedAt):''}
           </div>
           <div style="text-align:right">${statusBadge(q.status)}</div>
         </div>
@@ -40,7 +41,8 @@ async function loadOperatorQueue() {
           ${q.status==='done'?`<span class="chip">Selesai</span>`:''}
         </div>
       </div>`).join('');
-  } catch(e) { el.innerHTML = '<div class="text-muted text-small">Gagal memuat antrian: '+e.message+'</div>'; }
+    ensureRunningTimer();
+  } catch(e) { el.innerHTML = '<div class="text-muted text-small">Gagal memuat order: '+e.message+'</div>'; }
 }
 
 async function loadOperatorCalendar() {

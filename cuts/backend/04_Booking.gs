@@ -30,8 +30,10 @@ function BOOKING_create(data) {
     throw new Error('Jam pelayanan ' + timeSlot + ' sudah penuh. Silakan pilih jam lain.');
   }
 
-  const operatorBookings = todayBookings.filter(b => b.operatorId === operatorId);
-  const queueNumber = operatorBookings.length + 1;
+  // Nomor Order adalah nomor transaksi/booking, bukan urutan pelayanan.
+  // Urutan pelayanan tetap ditentukan oleh timeSlot yang dipilih pelanggan.
+  const orderNumber = BOOKING_nextOrderNumber_(todayBookings);
+  const queueNumber = orderNumber; // legacy: dipertahankan agar sheet lama tetap kompatibel
   const bookingId = UTIL_generateId('BKG');
   const now = UTIL_nowIso_();
 
@@ -48,6 +50,7 @@ function BOOKING_create(data) {
     serviceName  : service.name,
     price        : service.price,
     queueNumber  : queueNumber,
+    orderNumber  : orderNumber,
     status       : 'waiting',
     notes        : notes || '',
     createdAt    : now,
@@ -61,6 +64,7 @@ function BOOKING_create(data) {
     date           : date,
     timeSlot       : timeSlot,
     queueNumber    : queueNumber,
+    orderNumber    : orderNumber,
     userId         : userId || '',
     customerName   : customerName,
     operatorId     : operatorId,
@@ -76,7 +80,20 @@ function BOOKING_create(data) {
   };
   SHEET_appendRow(CONFIG.SHEET_NAMES.QUEUE, queueEntry);
 
-  return { bookingId, queueNumber, operatorName: operator.name, serviceName: service.name, timeSlot: timeSlot, date: date };
+  return { bookingId, queueNumber, orderNumber, operatorName: operator.name, serviceName: service.name, timeSlot: timeSlot, date: date };
+}
+
+function BOOKING_nextOrderNumber_(todayBookings) {
+  let maxNo = 0;
+  (todayBookings || []).forEach(b => {
+    const n = BOOKING_getOrderNumber_(b);
+    if (n > maxNo) maxNo = n;
+  });
+  return maxNo + 1;
+}
+
+function BOOKING_getOrderNumber_(row) {
+  return parseInt((row && (row.orderNumber || row.queueNumber)) || 0, 10) || 0;
 }
 
 function BOOKING_getByUser(data) {
@@ -89,7 +106,7 @@ function BOOKING_getByDate(data) {
   const { date } = data;
   const bookings = SHEET_readAll(CONFIG.SHEET_NAMES.BOOKINGS);
   return bookings.filter(b => b.date === date && b.status !== 'cancelled')
-    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || parseInt(a.queueNumber || 0, 10) - parseInt(b.queueNumber || 0, 10));
+    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || BOOKING_getOrderNumber_(a) - BOOKING_getOrderNumber_(b));
 }
 
 function BOOKING_cancel(data) {

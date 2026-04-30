@@ -84,14 +84,14 @@ function SHEET_initBookings() {
     'bookingId', 'userId', 'customerName', 'phone',
     'date', 'timeSlot', 'operatorId', 'operatorName',
     'serviceId', 'serviceName', 'price',
-    'queueNumber', 'status', 'notes', 'createdAt', 'updatedAt'
+    'queueNumber', 'orderNumber', 'status', 'notes', 'createdAt', 'updatedAt'
   ]);
 }
 
 function SHEET_initQueue() {
   const sheet = SHEET_getOrCreate(CONFIG.SHEET_NAMES.QUEUE);
   SHEET_ensureHeaders(sheet, [
-    'queueId', 'bookingId', 'date', 'timeSlot', 'queueNumber',
+    'queueId', 'bookingId', 'date', 'timeSlot', 'queueNumber', 'orderNumber',
     'userId', 'customerName', 'operatorId', 'operatorName',
     'serviceId', 'serviceName', 'status', 'calledAt', 'startedAt', 'finishedAt',
     'durationMinutes', 'seatNumber'

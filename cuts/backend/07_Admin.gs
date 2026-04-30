@@ -224,6 +224,7 @@ function ADMIN_getMonthlyCalendar(data) {
       operatorName : b.operatorName,
       serviceName  : b.serviceName,
       queueNumber  : b.queueNumber,
+      orderNumber  : b.orderNumber || b.queueNumber,
       status       : b.status,
       notes        : b.notes || ''
     });

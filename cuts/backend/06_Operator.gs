@@ -8,7 +8,8 @@ function OPERATOR_getMyQueue(data) {
   const queue = SHEET_readAll(CONFIG.SHEET_NAMES.QUEUE);
   return queue
     .filter(q => q.operatorId === resolvedOperatorId && q.date === today && q.status !== 'cancelled')
-    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || parseInt(a.queueNumber || 0, 10) - parseInt(b.queueNumber || 0, 10));
+    .sort((a, b) => String(a.timeSlot || '').localeCompare(String(b.timeSlot || '')) || OPERATOR_getOrderNumber_(a) - OPERATOR_getOrderNumber_(b))
+    .map(q => Object.assign({}, q, { orderNumber: q.orderNumber || q.queueNumber }));
 }
 
 function OPERATOR_resolveOperatorId_(data) {
@@ -47,8 +48,18 @@ function OPERATOR_startService(data) {
 function OPERATOR_finishService(data) {
   const { bookingId, durationMinutes } = data;
   const now = UTIL_nowIso_();
+  const queue = SHEET_readAll(CONFIG.SHEET_NAMES.QUEUE);
+  const entry = queue.find(q => q.bookingId === bookingId);
+  let finalDuration = durationMinutes || '';
+  if (!finalDuration && entry && entry.startedAt) {
+    const start = new Date(entry.startedAt).getTime();
+    const finish = new Date(now).getTime();
+    if (!isNaN(start) && !isNaN(finish) && finish >= start) {
+      finalDuration = Math.max(1, Math.round((finish - start) / 60000));
+    }
+  }
   SHEET_updateRow(CONFIG.SHEET_NAMES.QUEUE, 'bookingId', bookingId, {
-    status: 'done', finishedAt: now, durationMinutes: durationMinutes || ''
+    status: 'done', finishedAt: now, durationMinutes: finalDuration || ''
   });
   SHEET_updateRow(CONFIG.SHEET_NAMES.BOOKINGS, 'bookingId', bookingId, {
     status: 'done', updatedAt: now
@@ -57,3 +68,7 @@ function OPERATOR_finishService(data) {
 }
 
 // ============================================================
+
+function OPERATOR_getOrderNumber_(row) {
+  return parseInt((row && (row.orderNumber || row.queueNumber)) || 0, 10) || 0;
+}

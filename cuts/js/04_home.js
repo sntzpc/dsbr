@@ -16,9 +16,11 @@ async function loadMyQueueStatus() {
       return;
     }
     card.classList.remove('hidden');
-    document.getElementById('my-queue-num').textContent = status.queueNumber;
+    document.getElementById('my-queue-num').textContent = displayOrderNo(status);
     document.getElementById('my-op-name').textContent = '✂ ' + status.operatorName + (status.timeSlot ? ' · 🕒 ' + status.timeSlot : '');
-    document.getElementById('my-in-front').textContent = status.inFront > 0 ? `${status.inFront} orang di depan` : 'Giliran berikutnya!';
+    document.getElementById('my-in-front').innerHTML = status.status === 'in_progress'
+      ? renderRunningTimer(status.startedAt)
+      : (status.inFront > 0 ? `${status.inFront} order sebelum jam Anda` : 'Order Anda sudah dekat!');
 
     const badges = {
       waiting    : '<span class="badge badge-wait"><span class="badge-dot"></span>Menunggu</span>',
@@ -30,6 +32,7 @@ async function loadMyQueueStatus() {
     const progress = status.inFront === 0 ? 95 : Math.max(10, 100 - (status.inFront * 20));
     document.getElementById('my-progress-fill').style.width = progress + '%';
     document.getElementById('my-called-notice').classList.toggle('hidden', status.status !== 'called');
+    ensureRunningTimer();
   } catch (e) {}
 }
 
@@ -37,20 +40,21 @@ async function loadHomeQueue() {
   const el = document.getElementById('home-queue-list');
   try {
     const queue = await api('queue.getToday', { date: todayStr() });
-    if (!queue.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada antrian hari ini</div></div>'; return; }
+    if (!queue.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">✂</div><div class="empty-text">Belum ada order hari ini</div></div>'; return; }
     const active = queue.filter(q => ['waiting','called','in_progress'].includes(q.status));
-    if (!active.length) { el.innerHTML = '<div class="empty empty-text">Semua antrian selesai hari ini</div>'; return; }
+    if (!active.length) { el.innerHTML = '<div class="empty empty-text">Semua order selesai hari ini</div>'; return; }
     el.innerHTML = `<div class="queue-grid">${active.map(q => `
       <div class="queue-card status-${q.status}">
-        <div class="queue-num">${q.queueNumber}</div>
+        <div class="queue-num">${displayOrderNo(q)}</div>
         <div class="queue-initial">${q.customerInitial}</div>
         <div class="queue-op">${q.timeSlot || ''}</div>
         <div class="queue-op">${q.operatorName.split(' ')[0]}</div>
         <div style="margin-top:4px">${statusMini(q.status)}</div>
-        ${q.status==='in_progress'&&q.durationMinutes?`<div class="queue-op">${q.durationMinutes}mnt</div>`:''}
+        ${q.status==='in_progress'?renderRunningTimer(q.startedAt, true):''}
       </div>`).join('')}
     </div>`;
-  } catch (e) { el.innerHTML = '<div class="empty-text text-muted">Gagal memuat antrian</div>'; }
+    ensureRunningTimer();
+  } catch (e) { el.innerHTML = '<div class="empty-text text-muted">Gagal memuat order</div>'; }
 }
 
 async function loadCapacity() {
