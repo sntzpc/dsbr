@@ -1,5 +1,10 @@
 (function(){
   const LS_KEY_LAST_GOOD_BASE = 'barberbook_last_good_gas_base_v2';
+  const JSONP_LATE_CALLBACK_GRACE_MS = Number(window.APP_CONFIG?.JSONP_LATE_CALLBACK_GRACE_MS || 120000);
+
+  function isHeavyReadAction(action){
+    return /^(getAppSnapshot|getBookingCalendar|listBookings|getDashboardAdmin|getDashboardOperator|getReportBookings|getReportRevenue|getReportOperators)$/i.test(String(action || ''));
+  }
 
   function cleanBaseUrl(url){
     url = String(url || '').trim();
@@ -35,23 +40,35 @@
       let script = null;
       let done = false;
 
-      const cleanUp = () => {
-        try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+      const cleanUp = (keepLateGuard) => {
+        // Jika GAS lambat, browser tetap dapat mengeksekusi respons JSONP yang datang belakangan.
+        // Callback jangan langsung dihapus pada kondisi timeout agar tidak muncul error:
+        // "Uncaught ReferenceError: __bb_jsonp_xxx is not defined".
+        if(keepLateGuard) {
+          window[cb] = function(){
+            try { console.warn('JSONP response terlambat diabaikan:', cb); } catch(e){}
+          };
+          setTimeout(() => {
+            try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+          }, JSONP_LATE_CALLBACK_GRACE_MS);
+        } else {
+          try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+        }
         if(script && script.parentNode) script.parentNode.removeChild(script);
       };
 
       const timer = setTimeout(() => {
         if(done) return;
         done = true;
-        cleanUp();
-        reject(new Error('Timeout: Tidak ada respon dari server GAS JSONP.'));
+        cleanUp(true);
+        reject(new Error('Timeout: Server GAS belum membalas dalam batas waktu JSONP. Request dibatalkan di browser, respons lambat akan diabaikan aman.'));
       }, timeoutMs);
 
       window[cb] = (data) => {
         if(done) return;
         done = true;
         clearTimeout(timer);
-        cleanUp();
+        cleanUp(false);
 
         if(!data) {
           reject(new Error('Response kosong dari server GAS.'));
@@ -79,7 +96,7 @@
         if(done) return;
         done = true;
         clearTimeout(timer);
-        cleanUp();
+        cleanUp(false);
         reject(new Error('Gagal memuat JSONP. URL tidak publik / diblokir / respon bukan JavaScript callback.'));
       };
 
@@ -201,7 +218,11 @@
       const action = String(payload && payload.action || '');
       const forceBridge = options.forceBridge === true || /QrisUpload|Upload/i.test(action);
       const bridgeTimeout = Math.min(Math.max(options.bridgeTimeout || 12000, 6000), 20000);
-      const fastTimeout = Math.min(Math.max(timeout || 10000, 6000), window.APP_CONFIG?.FAST_API_TIMEOUT_MS || 12000);
+      const heavyRead = isHeavyReadAction(action);
+      const fastLimit = heavyRead
+        ? (window.APP_CONFIG?.HEAVY_API_TIMEOUT_MS || 25000)
+        : (window.APP_CONFIG?.FAST_API_TIMEOUT_MS || 12000);
+      const fastTimeout = Math.min(Math.max(timeout || 10000, 6000), fastLimit);
 
       // PATCH LATENSI 2026-04-29:
       // Request kecil memakai JSONP dulu. Versi sebelumnya menunggu iframe bridge hingga 60 detik,
@@ -211,7 +232,7 @@
         try {
           return await this.jsonpWithRetry(payload, fastTimeout, Object.assign({}, options, {
             modes: options.modes || ['flat'],
-            maxAttempts: options.maxAttempts || 2
+            maxAttempts: options.maxAttempts || (heavyRead ? 1 : 2)
           }));
         } catch(err) {
           lastErr = err;
@@ -232,7 +253,7 @@
       try {
         return await this.jsonpWithRetry(payload, fastTimeout, Object.assign({}, options, {
           modes: options.modes || ['flat','payload'],
-          maxAttempts: options.maxAttempts || 3
+          maxAttempts: options.maxAttempts || (heavyRead ? 1 : 3)
         }));
       } catch(err) {
         lastErr = err;

@@ -41,6 +41,10 @@ const DB_SCHEMA = {
   Holidays: [
     'date', 'holiday_name', 'active', 'notes', 'created_at', 'created_by'
   ],
+  OperationalInfo: [
+    'info_id', 'title', 'message', 'active', 'date_from', 'date_to', 'priority',
+    'created_at', 'created_by', 'updated_at', 'updated_by'
+  ],
   Notifications: [
     'notification_id', 'user_id', 'booking_id', 'title', 'message', 'type',
     'read_status', 'created_at', 'read_at'

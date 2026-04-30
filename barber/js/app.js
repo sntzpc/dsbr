@@ -2,9 +2,9 @@
   const U = window.Utils;
   const C = window.CONSTANTS;
   const App = {
-    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, loyalty:null, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
+    state:{ token:'', user:null, settings:{}, operators:[], services:[], bookings:[], queue:null, notifications:[], unread_count:0, loyalty:null, holidays:[], operationalInfos:[], publicInfo:null, page:'dashboard', polling:null, selectedSlot:null, isSaving:false, lastUserEditAt:0, pollingPausedUntil:0, refreshBusy:false, tablePages:{} },
     nav:{
-      ADMIN:[['dashboard','🏠','Dashboard'],['calendar','📅','Kalender'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['settings','⚙️','Setting'],['reports','📊','Report']],
+      ADMIN:[['dashboard','🏠','Dashboard'],['calendar','📅','Kalender'],['bookings','📋','Booking'],['operators','💈','Operator'],['services','🧾','Layanan'],['holidays','📆','Hari Libur'],['info','📢','Informasi'],['settings','⚙️','Setting'],['reports','📊','Report']],
       OPERATOR:[['dashboard','🏠','Dashboard'],['calendar','📅','Kalender'],['myQueue','📣','Antrian Saya'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']],
       CUSTOMER:[['dashboard','🏠','Dashboard'],['booking','🗓️','Booking'],['queue','📡','Antrian Live'],['loyalty','⭐','Loyalty'],['history','🕒','Riwayat'],['notifications','🔔','Notifikasi']]
     },
@@ -12,6 +12,7 @@
       this.applyTheme(localStorage.getItem(APP_CONFIG.THEME_KEY) || APP_CONFIG.DEFAULT_THEME);
       this.bindAuth();
       this.restoreSession();
+      this.loadPublicInfo();
       setTimeout(()=>U.$('#app-loader').classList.add('hidden'),350);
     },
     bindAuth(){
@@ -35,6 +36,25 @@
       this.showAuth();
     },
     saveSession(){ localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify({token:this.state.token,user:this.state.user})); },
+    async loadPublicInfo(){
+      try{
+        const r=await Api.request('getPublicOperationalInfo',{}, {timeout:8000, noBridge:true});
+        this.state.publicInfo=r.info||null;
+        this.renderPublicInfoCard();
+      }catch(e){ this.renderPublicInfoCard(); }
+    },
+    renderPublicInfoCard(){
+      const box=U.$('#public-info-card'); if(!box) return;
+      const info=this.state.publicInfo;
+      if(info && String(info.active).toLowerCase()!=='false'){
+        box.classList.add('dynamic');
+        const period=(info.date_from||info.date_to)?'<small>Berlaku: '+(U.formatDate(info.date_from)||'sekarang')+' - '+(U.formatDate(info.date_to)||'seterusnya')+'</small>':'';
+        box.innerHTML='<b>📢 '+U.esc(info.title||'Informasi Barbershop')+'</b><p>'+U.esc(info.message||'')+'</p>'+period;
+      }else{
+        box.classList.remove('dynamic');
+        box.innerHTML='<b>📌 Notifikasi</b><p>Real Time</p>';
+      }
+    },
     loading(show, text){ const loader=U.$('#app-loader'); if(show){loader.classList.remove('hidden'); loader.querySelector('p').textContent=text||'Memuat...'} else loader.classList.add('hidden'); },
     async api(action, data={}){ return Api.request(action, Object.assign({}, data, this.state.token?{token:this.state.token}:{})); },
     async login(data){
@@ -49,7 +69,7 @@
     },
     async logout(){
       try{ if(this.state.token) await this.api('logout'); }catch(e){}
-      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,loyalty:null,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false,tablePages:{}}; this.showAuth();
+      clearInterval(this.state.polling); localStorage.removeItem(APP_CONFIG.STORAGE_KEY); this.state={token:'',user:null,settings:{},operators:[],services:[],bookings:[],queue:null,notifications:[],unread_count:0,loyalty:null,holidays:[],operationalInfos:[],publicInfo:null,page:'dashboard',polling:null,selectedSlot:null,isSaving:false,lastUserEditAt:0,pollingPausedUntil:0,refreshBusy:false,tablePages:{}}; this.showAuth(); this.loadPublicInfo();
     },
     showAuth(){ U.$('#auth-screen').classList.remove('hidden'); U.$('#app-shell').classList.add('hidden'); },
     showApp(){
@@ -254,7 +274,7 @@
       return `<div class="table-pager"><div class="pager-info">${meta.total?`${meta.start+1}-${Math.min(meta.start+meta.state.pageSize,meta.total)} dari ${meta.total}`:'0 data'}</div><div class="pager-actions"><button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.max(1,meta.state.page-1)}">‹</button>${pageBtns}<button type="button" class="pager-btn" data-page-key="${key}" data-page="${Math.min(meta.pages,meta.state.page+1)}">›</button><select class="pager-size" data-page-size-key="${key}">${sizes.map(s=>`<option value="${s}" ${s===meta.state.pageSize?'selected':''}>${s}/hal</option>`).join('')}</select></div></div>`;
     },
     renderAdmin(page){
-      const map={dashboard:()=>this.adminDashboard(),calendar:()=>this.bookingCalendarPage(),bookings:()=>this.adminBookings(),operators:()=>this.adminOperators(),services:()=>this.adminServices(),settings:()=>this.adminSettings(),reports:()=>this.adminReports(),notifications:()=>this.notificationsPage()};
+      const map={dashboard:()=>this.adminDashboard(),calendar:()=>this.bookingCalendarPage(),bookings:()=>this.adminBookings(),operators:()=>this.adminOperators(),services:()=>this.adminServices(),holidays:()=>this.adminHolidaysPage(),info:()=>this.adminInfoPage(),settings:()=>this.adminSettings(),reports:()=>this.adminReports(),notifications:()=>this.notificationsPage()};
       (map[page]||map.dashboard)();
     },
     renderOperator(page){
@@ -369,9 +389,9 @@
       const defaultMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
       const currentMonth = this.state.calendarMonth || defaultMonth;
       const opOptions = this.state.user.role==='ADMIN'
-        ? `<label>Operator<select id="calendar-operator"><option value="">Semua Operator</option>${this.state.operators.map(o=>`<option value="${U.esc(o.operator_id)}" ${String(this.state.calendarOperator||'')===String(o.operator_id)?'selected':''}>${U.esc(o.operator_name)}</option>`).join('')}</select></label>`
+        ? `<select id="calendar-operator"><option value="">Semua Operator</option>${this.state.operators.map(o=>`<option value="${U.esc(o.operator_id)}" ${String(this.state.calendarOperator||'')===String(o.operator_id)?'selected':''}>${U.esc(o.operator_name)}</option>`).join('')}</select></label>`
         : '';
-      U.$('#content').innerHTML=`<div class="card"><div class="toolbar calendar-toolbar"><button class="ghost-btn" id="btn-calendar-prev">‹ Bulan Sebelumnya</button><label>Bulan<input id="calendar-month" type="month" value="${U.esc(currentMonth)}"></label>${opOptions}<button class="primary-btn" id="btn-load-calendar">Tampilkan</button><button class="ghost-btn" id="btn-calendar-today">Bulan Ini</button></div><small>Tanggal yang sudah lewat tetap tampil dan diarsir abu-abu. Booking tanggal lampau yang belum selesai akan otomatis berubah menjadi No Show saat data dimuat.</small></div><div class="card" style="margin-top:16px" id="calendar-wrap">${this.renderCalendarMatrix()}</div>`;
+      U.$('#content').innerHTML=`<div class="card"><div class="toolbar calendar-toolbar"><button class="ghost-btn" id="btn-calendar-prev">‹ Bln lalu</button><input id="calendar-month" type="month" value="${U.esc(currentMonth)}"></label>${opOptions}<button class="primary-btn" id="btn-load-calendar">Tampil</button><button class="ghost-btn" id="btn-calendar-today">Bln Ini</button></div><small>Review jumlah booking dari kalender</small></div><div class="card" style="margin-top:16px" id="calendar-wrap">${this.renderCalendarMatrix()}</div>`;
       const key = `${currentMonth}|${this.state.calendarOperator||''}`;
       if(!this.state.calendar || this.state.calendarKey!==key){
         setTimeout(()=>this.loadBookingCalendar(),0);
@@ -380,18 +400,19 @@
     renderCalendarMatrix(){
       const cal=this.state.calendar;
       if(!cal) return `<div class="empty-state"><b>Kalender belum dimuat</b><p>Tekan tombol Tampilkan untuk mengambil matrik booking.</p></div>`;
-      const headings=['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
+      const headings=[['Senin','S'],['Selasa','S'],['Rabu','R'],['Kamis','K'],['Jumat','J'],['Sabtu','S'],['Minggu','M']];
       const first=cal.days && cal.days[0] ? cal.days[0] : null;
       const offset=first ? ((Number(first.weekday)+6)%7) : 0;
       const blanks=Array.from({length:offset}).map(()=>`<div class="calendar-cell blank"></div>`).join('');
       const cells=(cal.days||[]).map(d=>{
-        const cls=['calendar-cell']; if(d.is_past) cls.push('past'); if(d.is_today) cls.push('today'); if(Number(d.total||0)>0) cls.push('has-booking');
+        const cls=['calendar-cell']; if(d.is_past) cls.push('past'); if(d.is_today) cls.push('today'); if(d.is_holiday) cls.push('holiday'); if(Number(d.total||0)>0) cls.push('has-booking');
         const statusLine = Number(d.total||0)>0
           ? `<div class="calendar-chips"><span>${Number(d.active||0)} Aktif</span><span>${Number(d.finished||0)} Selesai</span><span>${Number(d.cancelled||0)} Batal</span><span>${Number(d.no_show||0)} No Show</span></div>`
           : `<small class="muted">Kosong</small>`;
-        return `<button type="button" class="${cls.join(' ')}" data-calendar-date="${U.esc(d.date)}"><div class="calendar-date-head"><b>${d.day}</b>${d.total?`<em>${d.total} order</em>`:''}</div>${statusLine}</button>`;
+        const holidayLine=d.is_holiday?`<div class="holiday-chip">Libur: ${U.esc(d.holiday_name||'Hari Libur')}</div>`:'';
+        return `<button type="button" class="${cls.join(' ')}" data-calendar-date="${U.esc(d.date)}"><div class="calendar-date-head"><b>${d.day}</b>${d.total?`<em>${d.total} order</em>`:''}</div>${holidayLine}${statusLine}</button>`;
       }).join('');
-      return `<div class="section-title" style="margin-top:0"><h2>${U.esc(cal.month_label||'Kalender')}</h2><span class="badge">${U.esc(U.formatDate(cal.date_from))} - ${U.esc(U.formatDate(cal.date_to))}</span></div><div class="calendar-legend"><span><i class="legend-dot today"></i>Hari ini</span><span><i class="legend-dot past"></i>Tanggal lewat</span><span><i class="legend-dot active"></i>Ada booking</span></div><div class="calendar-grid headings">${headings.map(h=>`<div>${h}</div>`).join('')}</div><div class="calendar-grid">${blanks}${cells}</div>`;
+      return `<div class="section-title" style="margin-top:0"><h2>${U.esc(cal.month_label||'Kalender')}</h2><span class="badge">${U.esc(U.formatDate(cal.date_from))} - ${U.esc(U.formatDate(cal.date_to))}</span></div><div class="calendar-legend"><span><i class="legend-dot today"></i>Hari ini</span><span><i class="legend-dot past"></i>Tanggal lewat</span><span><i class="legend-dot active"></i>Ada booking</span><span><i class="legend-dot holiday"></i>Hari libur</span></div><div class="calendar-grid headings">${headings.map(h=>`<div><span class="day-full">${h[0]}</span><span class="day-short">${h[1]}</span></div>`).join('')}</div><div class="calendar-grid">${blanks}${cells}</div>`;
     },
     async loadBookingCalendar(){
       try{
@@ -423,8 +444,29 @@
       const rows=day.bookings||[];
       const summary=`<div class="grid grid-4">${this.stat('Total',day.total||0,'Order')}${this.stat('Selesai',day.finished||0,'')}${this.stat('Batal',day.cancelled||0,'')}${this.stat('No Show',day.no_show||0,'')}</div>`;
       const table=`<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>No</th><th>Pelanggan</th><th>No HP</th><th>Layanan</th><th>Operator</th><th>Jam Rencana</th><th>Status</th><th>Bayar</th></tr></thead><tbody>${rows.map(b=>`<tr><td>${U.esc(b.queue_no||'-')}</td><td>${U.esc(b.customer_name||'-')}</td><td>${U.esc(b.customer_phone||'-')}</td><td>${U.esc(b.service_name||'-')}</td><td>${U.esc(b.operator_name||'-')}</td><td>${U.esc(U.formatTime(b.slot_time)||'-')}</td><td>${U.badge(b.status)}</td><td>${U.paymentLabel(b.payment_status)}</td></tr>`).join('')||'<tr><td colspan="8">Kosong pada tanggal ini.</td></tr>'}</tbody></table></div>`;
-      const note=day.is_past?`<small>Tanggal ini sudah lewat. Booking yang belum selesai akan otomatis menjadi No Show, sedangkan transaksi selesai tetap menampilkan status bayar.</small>`:`<small>Data menampilkan booking sesuai otorisasi login saat ini.</small>`;
+      const holidayNote=day.is_holiday?`<div class="hint-box"><b>Hari Libur:</b> ${U.esc(day.holiday_name||'Hari Libur')}${day.holiday_notes?`<br><small>${U.esc(day.holiday_notes)}</small>`:''}</div>`:'';
+      const note=holidayNote+(day.is_past?`<small>Tanggal ini sudah lewat. Booking yang belum selesai akan otomatis menjadi No Show, sedangkan transaksi selesai tetap menampilkan status bayar.</small>`:`<small>Data menampilkan booking sesuai otorisasi login saat ini.</small>`);
       U.modal(`Detail Booking ${U.formatDate(date)}`,`${summary}${table}${note}`);
+    },
+    adminHolidaysPage(){
+      this.setTitle('Hari Libur Operasional','Tanggal libur tampil di kalender dan menutup slot booking pelanggan');
+      U.$('#content').innerHTML='<div class="grid grid-2"><div class="card"><h3>Input Hari Libur</h3><form id="holiday-form"><div class="form-grid"><label>Tanggal Libur<input type="date" name="date" required></label><label>Status<select name="active"><option value="true">Aktif</option><option value="false">Nonaktif</option></select></label><label class="span-2">Nama Hari Libur<input name="holiday_name" placeholder="Contoh: Tutup Sementara / Cuti Bersama" required></label><label class="span-2">Catatan<textarea name="notes" placeholder="Keterangan tambahan"></textarea></label></div><button class="primary-btn full" type="submit">Simpan Hari Libur</button></form></div><div class="card"><div class="section-title" style="margin-top:0"><h2>Daftar Hari Libur</h2><button class="ghost-btn small" id="btn-load-holidays">Refresh</button></div><div id="holidays-list">'+this.holidaysListHtml()+'</div></div></div>';
+      if(!this.state.holidaysLoaded) setTimeout(()=>this.loadHolidays(),0);
+    },
+    holidaysListHtml(){
+      const rows=this.state.holidays||[];
+      const body=rows.map((h,i)=>'<tr><td>'+U.esc(U.formatDate(h.date))+'</td><td>'+U.esc(h.holiday_name||'-')+'</td><td>'+(String(h.active).toLowerCase()==='false'?'<span class="badge">Nonaktif</span>':'<span class="badge active">Aktif</span>')+'</td><td>'+U.esc(h.notes||'-')+'</td><td><div class="action-row no-wrap-actions"><button class="ghost-btn mini" data-edit-holiday-idx="'+i+'">Edit</button><button class="danger-btn mini" data-delete-holiday="'+U.esc(h.date)+'">Nonaktifkan</button></div></td></tr>').join('') || '<tr><td colspan="5">Belum ada hari libur.</td></tr>';
+      return '<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Nama</th><th>Status</th><th>Catatan</th><th>Aksi</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    },
+    adminInfoPage(){
+      this.setTitle('Informasi Publik','Pengumuman yang tampil di kartu notifikasi sebelum login pelanggan');
+      U.$('#content').innerHTML='<div class="grid grid-2"><div class="card"><h3>Input Informasi</h3><form id="info-form"><input type="hidden" name="info_id"><div class="form-grid"><label>Status<select name="active"><option value="true">Aktif / Tampilkan</option><option value="false" selected>Nonaktif</option></select></label><label>Prioritas<select name="priority"><option value="NORMAL">Normal</option><option value="HIGH">Penting</option><option value="URGENT">Sangat Penting</option></select></label><label>Tanggal Mulai<input type="date" name="date_from"></label><label>Tanggal Selesai<input type="date" name="date_to"></label><label class="span-2">Judul<input name="title" placeholder="Contoh: Promo Akhir Pekan" required></label><label class="span-2">Isi Informasi<textarea name="message" rows="5" placeholder="Tulis pengumuman yang ingin ditampilkan sebelum login" required></textarea></label></div><button class="primary-btn full" type="submit">Simpan Informasi</button><small>Jika ada lebih dari satu informasi aktif, sistem menampilkan prioritas tertinggi yang masih dalam periode berlaku.</small></form></div><div class="card"><div class="section-title" style="margin-top:0"><h2>Daftar Informasi</h2><button class="ghost-btn small" id="btn-load-infos">Refresh</button></div><div id="infos-list">'+this.infoListHtml()+'</div></div></div>';
+      if(!this.state.infosLoaded) setTimeout(()=>this.loadOperationalInfos(),0);
+    },
+    infoListHtml(){
+      const rows=this.state.operationalInfos||[];
+      const body=rows.map((info,i)=>'<tr><td><b>'+U.esc(info.title||'-')+'</b><br><small>'+U.esc(info.message||'')+'</small></td><td>'+(String(info.active).toLowerCase()==='true'?'<span class="badge active">Aktif</span>':'<span class="badge">Nonaktif</span>')+'</td><td>'+U.esc(info.priority||'NORMAL')+'</td><td>'+U.esc(U.formatDate(info.date_from)||'-')+' s/d '+U.esc(U.formatDate(info.date_to)||'-')+'</td><td><div class="action-row no-wrap-actions"><button class="ghost-btn mini" data-edit-info-idx="'+i+'">Edit</button><button class="danger-btn mini" data-delete-info="'+U.esc(info.info_id)+'">Nonaktifkan</button></div></td></tr>').join('') || '<tr><td colspan="5">Belum ada informasi.</td></tr>';
+      return '<div class="table-wrap"><table><thead><tr><th>Judul</th><th>Status</th><th>Prioritas</th><th>Berlaku</th><th>Aksi</th></tr></thead><tbody>'+body+'</tbody></table></div>';
     },
     adminBookings(){
       this.setTitle('Manajemen Booking','Order pelanggan');
@@ -544,6 +586,14 @@
       const of=U.$('#operator-form'); if(of) of.onsubmit=async e=>{e.preventDefault(); await this.saveOperator(U.serialize(of));};
       const sf=U.$('#service-form'); if(sf) sf.onsubmit=async e=>{e.preventDefault(); await this.saveService(U.serialize(sf));};
       const st=U.$('#settings-form'); if(st) st.onsubmit=async e=>{e.preventDefault(); await this.saveSettings(U.serialize(st));};
+      const hf=U.$('#holiday-form'); if(hf) hf.onsubmit=async e=>{e.preventDefault(); await this.saveHoliday(U.serialize(hf));};
+      const hi=U.$('#btn-load-holidays'); if(hi) hi.onclick=()=>this.loadHolidays();
+      U.$$('[data-edit-holiday-idx]').forEach(b=>b.onclick=()=>{const h=(this.state.holidays||[])[Number(b.dataset.editHolidayIdx)]||{}; const f=U.$('#holiday-form'); if(f){f.elements.date.value=this.toInputDate(h.date); f.elements.holiday_name.value=h.holiday_name||''; f.elements.active.value=String(h.active).toLowerCase()==='false'?'false':'true'; f.elements.notes.value=h.notes||''; window.scrollTo({top:0,behavior:'smooth'});}});
+      U.$$('[data-delete-holiday]').forEach(b=>b.onclick=()=>this.deleteHoliday(b.dataset.deleteHoliday));
+      const inf=U.$('#info-form'); if(inf) inf.onsubmit=async e=>{e.preventDefault(); await this.saveOperationalInfo(U.serialize(inf));};
+      const il=U.$('#btn-load-infos'); if(il) il.onclick=()=>this.loadOperationalInfos();
+      U.$$('[data-edit-info-idx]').forEach(b=>b.onclick=()=>{const info=(this.state.operationalInfos||[])[Number(b.dataset.editInfoIdx)]||{}; const f=U.$('#info-form'); if(f){Object.keys(info).forEach(k=>{ if(f.elements[k]) f.elements[k].value=(k==='date_from'||k==='date_to')?this.toInputDate(info[k]):info[k]; }); f.elements.active.value=String(info.active).toLowerCase()==='true'?'true':'false'; window.scrollTo({top:0,behavior:'smooth'});}});
+      U.$$('[data-delete-info]').forEach(b=>b.onclick=()=>this.deleteOperationalInfo(b.dataset.deleteInfo));
       const qf=U.$('#qris-upload-form'); if(qf) qf.onsubmit=async e=>{e.preventDefault(); await this.uploadQrisStatic(qf);};
       U.$$('[data-edit-operator]').forEach(b=>b.onclick=()=>{const o=JSON.parse(b.getAttribute('data-edit-operator')); const f=U.$('#operator-form'); Object.keys(o).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(o[k]):o[k])}); window.scrollTo({top:0,behavior:'smooth'});});
       U.$$('[data-edit-service]').forEach(b=>b.onclick=()=>{const s=JSON.parse(b.getAttribute('data-edit-service')); const f=U.$('#service-form'); Object.keys(s).forEach(k=>{if(f.elements[k]) f.elements[k].value=(f.elements[k].type==='time'?U.timeInput(s[k]):s[k])}); window.scrollTo({top:0,behavior:'smooth'});});
@@ -686,6 +736,19 @@
         this.loading(false);
       }
     },
+    toInputDate(v){
+      if(!v) return '';
+      const str=String(v).trim();
+      let m=str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/); if(m) return m[1]+'-'+U.pad(m[2])+'-'+U.pad(m[3]);
+      m=str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/); if(m) return m[3]+'-'+U.pad(m[2])+'-'+U.pad(m[1]);
+      return '';
+    },
+    async loadHolidays(){ try{ this.loading(true,'Memuat hari libur...'); const r=await this.api('listHolidays',{}); this.state.holidays=r.holidays||[]; this.state.holidaysLoaded=true; const box=U.$('#holidays-list'); if(box) box.innerHTML=this.holidaysListHtml(); this.bindContentEvents(); }catch(err){U.toast('Hari libur gagal dimuat',err.message,'error')}finally{this.loading(false)} },
+    async saveHoliday(data){ try{ this.state.isSaving=true; this.loading(true,'Menyimpan hari libur...'); const r=await this.api('saveHoliday',data); U.toast('Hari libur disimpan',r.message,'success'); this.state.calendar=null; await this.loadHolidays(); }catch(err){U.toast('Gagal simpan hari libur',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
+    async deleteHoliday(date){ const ok=await U.confirm('Nonaktifkan Hari Libur','Tanggal libur akan dinonaktifkan dan tidak lagi menutup slot booking. Lanjutkan?'); if(!ok) return; try{ this.loading(true); const r=await this.api('deleteHoliday',{date}); U.toast('Hari libur dinonaktifkan',r.message,'success'); this.state.calendar=null; await this.loadHolidays(); }catch(err){U.toast('Gagal nonaktifkan',err.message,'error')}finally{this.loading(false)} },
+    async loadOperationalInfos(){ try{ this.loading(true,'Memuat informasi...'); const r=await this.api('listOperationalInfo',{}); this.state.operationalInfos=r.infos||[]; this.state.infosLoaded=true; const box=U.$('#infos-list'); if(box) box.innerHTML=this.infoListHtml(); this.bindContentEvents(); }catch(err){U.toast('Informasi gagal dimuat',err.message,'error')}finally{this.loading(false)} },
+    async saveOperationalInfo(data){ try{ this.state.isSaving=true; this.loading(true,'Menyimpan informasi...'); const r=await this.api('saveOperationalInfo',data); U.toast('Informasi disimpan',r.message,'success'); await this.loadOperationalInfos(); await this.loadPublicInfo(); }catch(err){U.toast('Gagal simpan informasi',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
+    async deleteOperationalInfo(info_id){ const ok=await U.confirm('Nonaktifkan Informasi','Informasi tidak akan tampil lagi di halaman awal. Lanjutkan?'); if(!ok) return; try{ this.loading(true); const r=await this.api('deleteOperationalInfo',{info_id}); U.toast('Informasi dinonaktifkan',r.message,'success'); await this.loadOperationalInfos(); await this.loadPublicInfo(); }catch(err){U.toast('Gagal nonaktifkan',err.message,'error')}finally{this.loading(false)} },
     async saveSettings(data){ try{ this.state.isSaving=true; this.loading(true); const r=await this.api('saveSettings',{settings:data}); this.state.lastUserEditAt=0; this.state.pollingPausedUntil=0; U.toast('Setting disimpan',r.message,'success'); await this.refresh(); }catch(err){U.toast('Gagal simpan',err.message,'error')}finally{this.state.isSaving=false; this.loading(false)} },
     async markNotif(id){ try{ await this.api('markNotificationRead',{notification_id:id}); await this.refresh(); }catch(err){U.toast('Gagal',err.message,'error')} },
     renderReportBookingsPage(){

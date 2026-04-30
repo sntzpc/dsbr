@@ -229,6 +229,16 @@ function getBookingCalendar_(payload) {
     rows = rows.filter(function(r) { return String(r.operator_id) === String(payload.operator_id); });
   }
 
+  const holidaysByDate = {};
+  try {
+    getRowsAsObjects_('Holidays').forEach(function(h) {
+      const hd = toDateOnly_(h.date);
+      if (hd && compareDate_(hd, dateFrom) >= 0 && compareDate_(hd, dateTo) <= 0 && bool_(h.active)) {
+        holidaysByDate[hd] = cleanRow_(h);
+      }
+    });
+  } catch (err) {}
+
   const byDate = {};
   rows.forEach(function(b) {
     const d = toDateOnly_(b.booking_date);
@@ -254,12 +264,16 @@ function getBookingCalendar_(payload) {
       const bt = String(b.slot_time || b.created_at || '');
       return at.localeCompare(bt) || number_(a.queue_no) - number_(b.queue_no);
     });
+    const holiday = holidaysByDate[d] || null;
     days.push(Object.assign({
       date: d,
       day: i,
       weekday: new Date(year, month - 1, i).getDay(),
       is_past: compareDate_(d, today) < 0,
-      is_today: compareDate_(d, today) === 0
+      is_today: compareDate_(d, today) === 0,
+      is_holiday: !!holiday,
+      holiday_name: holiday ? holiday.holiday_name : '',
+      holiday_notes: holiday ? holiday.notes : ''
     }, cell));
   }
 
@@ -282,7 +296,7 @@ function validateOperationalDate_(date) {
   if (operationalDays.indexOf(String(day)) === -1) throw new Error('Tanggal tersebut bukan hari operasional.');
 
   const holiday = getRowsAsObjects_('Holidays').find(function(h) {
-    return toDateOnly_(h.date) === date && bool_(h.active);
+    return toDateOnly_(h.date) === toDateOnly_(date) && bool_(h.active);
   });
   if (holiday) throw new Error('Tanggal tersebut libur: ' + holiday.holiday_name);
 }

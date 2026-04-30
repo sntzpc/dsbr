@@ -55,6 +55,7 @@ function routeAction_(action, payload, e) {
     getSettings: getSettings_,
     saveSettings: saveSettings_,
     getAppSnapshot: getAppSnapshot_,
+    getPublicOperationalInfo: getPublicOperationalInfo_,
 
     listOperators: listOperators_,
     saveOperator: saveOperator_,
@@ -63,6 +64,13 @@ function routeAction_(action, payload, e) {
     listServices: listServices_,
     saveService: saveService_,
     setServiceStatus: setServiceStatus_,
+
+    listHolidays: listHolidays_,
+    saveHoliday: saveHoliday_,
+    deleteHoliday: deleteHoliday_,
+    listOperationalInfo: listOperationalInfo_,
+    saveOperationalInfo: saveOperationalInfo_,
+    deleteOperationalInfo: deleteOperationalInfo_,
 
     getBookingAvailability: getBookingAvailability_,
     createBooking: createBooking_,

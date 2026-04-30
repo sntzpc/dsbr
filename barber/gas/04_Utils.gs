@@ -91,7 +91,13 @@ function apiResponse_(data, callback) {
   const output = data && data.status ? data : Object.assign({ status: APP_CONFIG.API_OK }, data || {});
   const json = JSON.stringify(output);
   if (callback) {
-    return ContentService.createTextOutput(String(callback) + '(' + json + ')')
+    var cb = String(callback || '').trim();
+    // Validasi nama callback JSONP supaya respons selalu JavaScript yang aman.
+    // Contoh nama dari frontend: __bb_jsonp_1777530330626_d899360c2b555
+    if (!/^[A-Za-z_$][0-9A-Za-z_$]*(?:\.[A-Za-z_$][0-9A-Za-z_$]*)*$/.test(cb)) {
+      cb = '__bb_invalid_jsonp_callback__';
+    }
+    return ContentService.createTextOutput(cb + '(' + json + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
   return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
