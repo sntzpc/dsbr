@@ -130,30 +130,34 @@
     if(!groups.length) return { created:0, skipped:0 };
     const debtDate = endOfPeriodDate(period);
     const debtTime = '23:59:59';
-    let created = 0, skipped = 0;
+    let created = 0, updated = 0;
     const existingRows = (APP.state.debts || []).map(normalizeDebt);
     for(const group of groups){
-      const existing = existingRows.find(x => x.groupKey === debtGroupKey(period, group.recipientType, group.recipientName));
-      if(existing){ skipped++; continue; }
-      await saveDebt({
-        id: uuid(),
-        groupKey: debtGroupKey(period, group.recipientType, group.recipientName),
+      const key = debtGroupKey(period, group.recipientType, group.recipientName);
+      const existing = existingRows.find(x => x.groupKey === key);
+      const rowPayload = {
+        id: existing?.id || uuid(),
+        groupKey: key,
         period,
-        debtDate,
-        debtTime,
+        debtDate: existing?.debtDate || debtDate,
+        debtTime: existing?.debtTime || debtTime,
         recipientType: group.recipientType,
         recipientName: group.recipientName,
         principalAmount: group.principalAmount,
-        paidAmount: 0,
-        notes: `Bagi hasil ${group.recipientName} periode ${periodLabel(period)} (${group.sourceCount} baris sumber).`,
-        payments: [],
+        paidAmount: Number(existing?.paidAmount || 0),
+        notes: `Bagi hasil ${group.recipientName} periode ${periodLabel(period)} (${group.sourceCount} baris sumber setoran).`,
+        payments: existing?.payments || [],
         sourceRowKeys: group.sourceRowKeys,
+        lastBurdenPeriod: existing?.lastBurdenPeriod || '',
+        lastPostingDate: existing?.lastPostingDate || '',
+        lastPostingTime: existing?.lastPostingTime || '',
         updatedAt: `${nowParts().display} WIB`
-      });
-      created++;
+      };
+      await saveDebt(rowPayload);
+      if(existing) updated++; else created++;
     }
     APP.state.debts = await DB.getAll(STORES.debts);
-    return { created, skipped };
+    return { created, updated };
   }
 
   async function payDebtById(debtId, amount, burdenPeriod, paymentNotes=''){
@@ -207,6 +211,20 @@
     await DB.put(STORES.mainTransactions, mainTx);
     await DB.put(STORES.debts, updated);
     return updated;
+  }
+
+  async function deleteDebtById(debtId=''){
+    const debt = normalizeDebt(await DB.get(STORES.debts, debtId));
+    if(!debt || !debt.id) return showToast('Data hutang tidak ditemukan.', 'error');
+    const paid = Number(debt.paidAmount || 0);
+    const msg = paid > 0
+      ? `Hutang ini sudah pernah dibayar Rp ${rupiah(paid)}. Hapus data hutang? Catatan transaksi utama pembayaran yang sudah terlanjur dibuat tidak ikut dihapus.`
+      : 'Hapus data hutang ini?';
+    if(!confirm(msg)) return;
+    await DB.delete(STORES.debts, debt.id);
+    await loadState();
+    render();
+    showToast('Data hutang berhasil dihapus.');
   }
 
   function openDebtModal(debtId=''){
@@ -301,7 +319,7 @@
 
       <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
         <div class="table-wrap"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal Hutang</th><th class="px-3 py-2 text-left">Periode Hutang</th><th class="px-3 py-2 text-left">Penerima</th><th class="px-3 py-2 text-right">Hutang Awal</th><th class="px-3 py-2 text-right">Terbayar</th><th class="px-3 py-2 text-right">Sisa</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2 text-left">Pembebanan Terakhir</th><th class="px-3 py-2 text-left">Update Terakhir</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>
-          ${summary.rows.map(row=>`<tr class="border-b"><td class="px-3 py-2">${formatDateTime(row.debtDate,row.debtTime)}</td><td class="px-3 py-2">${escapeHtml(periodLabel(row.period))}</td><td class="px-3 py-2">${escapeHtml(row.recipientName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.principalAmount)}</td><td class="px-3 py-2 text-right text-blue-600">Rp ${rupiah(row.paidAmount)}</td><td class="px-3 py-2 text-right ${row.remainingAmount>0?'text-amber-600 font-semibold':'text-emerald-600 font-semibold'}">Rp ${rupiah(row.remainingAmount)}</td><td class="px-3 py-2">${debtStatusBadge(row.status)}</td><td class="px-3 py-2">${row.lastBurdenPeriod ? `${escapeHtml(periodLabel(row.lastBurdenPeriod))} · ${formatDate(row.lastPostingDate || '')}` : '-'}</td><td class="px-3 py-2">${escapeHtml(row.updatedAt || '-')}</td><td class="px-3 py-2 text-center">${row.status==='LUNAS' ? '-' : `<button data-pay-debt="${row.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600">Bayar</button>`}</td></tr>`).join('') || `<tr><td colspan="10" class="px-3 py-8 text-center text-slate-500">Belum ada data hutang bagi hasil.</td></tr>`}
+          ${summary.rows.map(row=>`<tr class="border-b"><td class="px-3 py-2">${formatDateTime(row.debtDate,row.debtTime)}</td><td class="px-3 py-2">${escapeHtml(periodLabel(row.period))}</td><td class="px-3 py-2">${escapeHtml(row.recipientName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.principalAmount)}</td><td class="px-3 py-2 text-right text-blue-600">Rp ${rupiah(row.paidAmount)}</td><td class="px-3 py-2 text-right ${row.remainingAmount>0?'text-amber-600 font-semibold':'text-emerald-600 font-semibold'}">Rp ${rupiah(row.remainingAmount)}</td><td class="px-3 py-2">${debtStatusBadge(row.status)}</td><td class="px-3 py-2">${row.lastBurdenPeriod ? `${escapeHtml(periodLabel(row.lastBurdenPeriod))} · ${formatDate(row.lastPostingDate || '')}` : '-'}</td><td class="px-3 py-2">${escapeHtml(row.updatedAt || '-')}</td><td class="px-3 py-2 text-center">${`<div class="inline-flex items-center justify-center gap-1 whitespace-nowrap">${row.status==='LUNAS' ? '' : `<button data-pay-debt="${row.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600">Bayar</button>`}<button data-delete-debt="${row.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-rose-600">Hapus</button></div>`}</td></tr>`).join('') || `<tr><td colspan="10" class="px-3 py-8 text-center text-slate-500">Belum ada data hutang bagi hasil.</td></tr>`}
         </tbody></table></div>
       </section>
     </div>`;
@@ -361,6 +379,7 @@
     document.getElementById('debtFilterSearch')?.addEventListener('input', e=>{ APP.state.debtFilters.search=e.target.value; scheduleRender({ preserveInputId:'debtFilterSearch', preserveCursor:true }); });
     document.getElementById('resetDebtFiltersBtn')?.addEventListener('click', ()=>{ APP.state.debtFilters={ startDate:'', endDate:'', status:'ALL', recipientType:'ALL', period:'', search:'' }; render(); });
     document.querySelectorAll('[data-pay-debt]').forEach(btn=>btn.addEventListener('click', ()=> openDebtModal(btn.dataset.payDebt)));
+    document.querySelectorAll('[data-delete-debt]').forEach(btn=>btn.addEventListener('click', ()=> deleteDebtById(btn.dataset.deleteDebt)));
     document.getElementById('exportDebtXlsxBtn')?.addEventListener('click', exportDebtXlsx);
     document.getElementById('exportDebtPdfBtn')?.addEventListener('click', exportDebtPdf);
   }
@@ -370,6 +389,7 @@
   window.debtSummary = debtSummary;
   window.postProfitPeriodToDebts = postProfitPeriodToDebts;
   window.payDebtById = payDebtById;
+  window.deleteDebtById = deleteDebtById;
   window.debtsPage = debtsPage;
   window.bindDebtEvents = bindDebtEvents;
   window.exportDebtXlsx = exportDebtXlsx;

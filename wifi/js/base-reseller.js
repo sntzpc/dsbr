@@ -77,9 +77,49 @@ function txDecorated(tx){
     recipientLabel: PROFIT_RECIPIENTS[tx.recipient || 'ACTOR'] || '-'
   };
 }
-function linkedSetorForDeposit(depositId=''){
-  return APP.state.moduleTransactions.find(x=>x.moduleType==='SETOR' && x.linkedDepositId===depositId) || null;
+function linkedSetorsForDeposit(depositId='', excludeId=''){
+  return (APP.state.moduleTransactions || [])
+    .filter(x => x.moduleType === 'SETOR' && x.linkedDepositId === depositId && (!excludeId || x.id !== excludeId))
+    .sort((a,b)=>`${b.date || ''} ${b.time || ''}`.localeCompare(`${a.date || ''} ${a.time || ''}`));
 }
+function sumLinkedSetorsForDeposit(depositId='', excludeId=''){
+  return linkedSetorsForDeposit(depositId, excludeId).reduce((s,x)=>s+Number(x.nominal||0),0);
+}
+function linkedSetorForDeposit(depositId=''){
+  return linkedSetorsForDeposit(depositId)[0] || null;
+}
+function setorSettlementRatio(sourceDeposit){
+  const depositNominal = Number(sourceDeposit?.nominal || 0);
+  const expected = Number(sourceDeposit?.expectedSetor || 0);
+  if(depositNominal <= 0) return 1;
+  const ratio = expected / depositNominal;
+  return (ratio > 0 && isFinite(ratio)) ? ratio : 1;
+}
+function realizedGrossFromSetor(setorTx, sourceDeposit){
+  const nominal = Number(setorTx?.nominal || 0);
+  const ratio = setorSettlementRatio(sourceDeposit);
+  return roundMoney2(ratio > 0 ? nominal / ratio : nominal);
+}
+function linkedSetorsForDepositAsc(depositId='', excludeId=''){
+  return linkedSetorsForDeposit(depositId, excludeId).slice().sort((a,b)=>`${a.date || ''} ${a.time || ''}`.localeCompare(`${b.date || ''} ${b.time || ''}`));
+}
+function setorInstallmentInfo(setorTx, sourceDeposit){
+  if(!setorTx || !sourceDeposit) return { installmentNo:0, installmentCount:0, paidBefore:0, paidUntilThis:0, remainingAfter:0 };
+  const list = linkedSetorsForDepositAsc(sourceDeposit.id);
+  const idx = list.findIndex(x=>x.id===setorTx.id);
+  const pos = idx >= 0 ? idx : list.length;
+  const paidBefore = list.slice(0, Math.max(0,pos)).reduce((sum,x)=>sum+Number(x.nominal||0),0);
+  const paidUntilThis = paidBefore + Number(setorTx.nominal||0);
+  const target = Number(sourceDeposit.expectedSetor||0);
+  return {
+    installmentNo: pos + 1,
+    installmentCount: list.length || 1,
+    paidBefore: roundMoney2(paidBefore),
+    paidUntilThis: roundMoney2(paidUntilThis),
+    remainingAfter: roundMoney2(Math.max(0, target - paidUntilThis))
+  };
+}
+function moduleAllFilters(){ return { modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL' }; }
 
 function filterMirroredSetorRows(rows, filters = APP.state.moduleFilters){
   const smart = filters.setorSmart || 'ALL';
@@ -100,13 +140,13 @@ function filterDepositRows(rows, filters = APP.state.moduleFilters){
   if(smart === 'ALL') return rows;
   const today = todayDateIso();
   return rows.filter(tx => {
-    const setor = linkedSetorForDeposit(tx.id);
-    const setorNominal = Number(setor?.nominal || 0);
+    const setorList = linkedSetorsForDeposit(tx.id);
+    const setorNominal = sumLinkedSetorsForDeposit(tx.id);
     const target = Number(tx.expectedSetor || 0);
     if(smart === 'TODAY') return tx.date === today;
-    if(smart === 'UNSETTLED') return !setor;
-    if(smart === 'PARTIAL') return !!setor && setorNominal > 0 && setorNominal < target;
-    if(smart === 'FULL') return !!setor && setorNominal >= target;
+    if(smart === 'UNSETTLED') return !setorList.length;
+    if(smart === 'PARTIAL') return !!setorList.length && setorNominal > 0 && setorNominal < target;
+    if(smart === 'FULL') return !!setorList.length && setorNominal >= target;
     if(smart === 'PIUTANG') return Math.max(0, target - setorNominal) > 0;
     return true;
   });
@@ -154,8 +194,9 @@ function moduleQuickFilterBar(tab, context='module'){
 function mirroredSetorRows(){
   return getFilteredModuleTransactions('DEPOSIT').map(tx=>{
     const dec = txDecorated(tx);
-    const setor = linkedSetorForDeposit(tx.id);
-    const setorNominal = Number(setor?.nominal||0);
+    const setors = linkedSetorsForDeposit(tx.id);
+    const latestSetor = setors[0] || null;
+    const setorNominal = setors.reduce((s,x)=>s+Number(x.nominal||0),0);
     const target = Number(tx.expectedSetor||0);
     return {
       ...dec,
@@ -164,31 +205,35 @@ function mirroredSetorRows(){
       depositTime: tx.time,
       depositNominal: Number(tx.nominal||0),
       targetSetor: target,
-      setorId: setor?.id || '',
+      setorId: latestSetor?.id || '',
+      setorIds: setors.map(x=>x.id),
+      setorCount: setors.length,
       setorNominal,
-      setorDate: setor?.date || tx.date,
-      setorTime: setor?.time || tx.time,
-      setorNotes: setor?.notes || '',
+      setorDate: latestSetor?.date || tx.date,
+      setorTime: latestSetor?.time || tx.time,
+      setorNotes: latestSetor?.notes || '',
       receivable: Math.max(0, target - setorNominal),
-      statusLabel: !setor ? 'Belum Disetor' : (setorNominal >= target ? 'Setor Penuh' : 'Setor Sebagian')
+      statusLabel: !setors.length ? 'Belum Disetor' : (setorNominal >= target ? 'Setor Penuh' : 'Setor Sebagian')
     };
   });
 }
 function startSetorFromDeposit(depositId){
   const tx = APP.state.moduleTransactions.find(x=>x.id===depositId && x.moduleType==='DEPOSIT');
   if(!tx) return showToast('Data deposit tidak ditemukan.', 'error');
-  const existing = linkedSetorForDeposit(depositId);
+  const alreadyPaid = sumLinkedSetorsForDeposit(depositId);
+  const remaining = Math.max(0, Number(tx.expectedSetor || 0) - alreadyPaid);
+  if(remaining <= 0) return showToast('Deposit ini sudah disetor penuh. Hapus/edit setoran lama jika perlu koreksi.', 'info');
   APP.state.moduleTab = 'setor';
-  APP.state.editModuleId = existing?.id || null;
+  APP.state.editModuleId = null;
   APP.state.forms.module = {
     txType:'SETOR',
     baseId:tx.baseId,
     actorKey:tx.actorKey,
     recipient:'ACTOR',
-    nominal:Number(existing?.nominal ?? tx.expectedSetor ?? 0),
-    notes:existing?.notes || `Setoran dari deposit ${formatDateTime(tx.date, tx.time)}${tx.notes ? ' - ' + tx.notes : ''}`,
-    date:existing?.date || tx.date,
-    time:existing?.time || tx.time,
+    nominal:remaining,
+    notes:`Setoran dari deposit ${formatDateTime(tx.date, tx.time)}${tx.notes ? ' - ' + tx.notes : ''}`,
+    date:todayDateIso(),
+    time:currentTimeWIB(),
     linkedDepositId:depositId,
     sourceDepositSnapshot: {
       id: tx.id,
@@ -204,9 +249,9 @@ function startSetorFromDeposit(depositId){
   };
   render();
 }
-function aggregateModuleReport(){
+function aggregateModuleReport(filters = APP.state.moduleFilters){
   const rowsMap = new Map();
-  const txs = getFilteredModuleTransactions('ALL');
+  const txs = getFilteredModuleTransactions('ALL', filters);
   for(const tx of txs){
     if(!['DEPOSIT','SETOR'].includes(tx.moduleType)) continue;
     const base = findBase(tx.baseId); if(!base) continue;
@@ -216,15 +261,20 @@ function aggregateModuleReport(){
     if(tx.moduleType==='DEPOSIT'){
       row.gross += Number(tx.nominal||0);
       row.expected += Number(tx.expectedSetor||0);
-      row.actorShare += Number(tx.actorShareAmount||0);
-      row.ownerShare += Number(tx.ownerShareAmount||0);
-      row.partnerShare += Number(tx.partnerShareAmount||0);
-      row.baseShare += Number(tx.baseShareAmount||0);
       row.deposits += 1;
     }
     if(tx.moduleType==='SETOR'){
       row.actual += Number(tx.nominal||0);
       row.setors += 1;
+      const sourceDeposit = tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') : null;
+      const sourceBase = sourceDeposit ? findBase(sourceDeposit.baseId) : base;
+      if(sourceDeposit && sourceBase){
+        const grossEquivalent = realizedGrossFromSetor(tx, sourceDeposit);
+        row.actorShare += roundMoney2(grossEquivalent * (actorSharePct(sourceBase, sourceDeposit.resellerId || '') / 100));
+        row.ownerShare += roundMoney2(grossEquivalent * (Number(sourceBase.shares.owner||0) / 100));
+        row.partnerShare += roundMoney2(grossEquivalent * (Number(sourceBase.shares.partner||0) / 100));
+        row.baseShare += sourceDeposit.resellerId ? roundMoney2(grossEquivalent * (Number(sourceBase.shares.baseFromReseller||0) / 100)) : 0;
+      }
     }
   }
   const rows = [...rowsMap.values()].map(r => {
@@ -246,8 +296,8 @@ function aggregateModuleReport(){
   }), { gross:0, expected:0, actual:0, receivable:0, ownerShare:0, partnerShare:0, actorShare:0, actorShareDisplay:0, baseShare:0, deposits:0, setors:0 });
   return { rows, grand };
 }
-function computedPiutangRows(){
-  return aggregateModuleReport().rows
+function computedPiutangRows(filters = APP.state.moduleFilters){
+  return aggregateModuleReport(filters).rows
     .filter(r=>Number(r.receivable||0) > 0)
     .map(r=>({
       id:`AUTO-PIUTANG-${r.actorKey}`,
@@ -262,35 +312,44 @@ function computedPiutangRows(){
     }))
     .map(txDecorated);
 }
-function computedProfitRows(){
+function computedProfitRows(filters = APP.state.moduleFilters){
   const rows = [];
-  const filteredDeposits = getFilteredModuleTransactions('DEPOSIT');
-  for(const tx of filteredDeposits){
-    const base = findBase(tx.baseId);
+  const filteredSetors = getFilteredModuleTransactions('SETOR', filters);
+  for(const tx of filteredSetors){
+    const sourceDeposit = tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') : null;
+    if(!sourceDeposit) continue;
+    const base = findBase(sourceDeposit.baseId);
     if(!base) continue;
-    const actor = txDecorated(tx);
+    const actor = txDecorated(sourceDeposit);
+    const grossEquivalent = realizedGrossFromSetor(tx, sourceDeposit);
+    const actorShare = roundMoney2(grossEquivalent * (actorSharePct(base, sourceDeposit.resellerId || '') / 100));
     const parts = [
-      { recipient:'BASE', label:actor.baseName, nominal:Number(tx.baseShareAmount||0) },
-      { recipient:'ACTOR', label:'Pelaku', nominal:Number(tx.actorShareAmount||0) },
-      { recipient:'OWNER', label:getConfig().ownerName || 'System', nominal:Number(tx.ownerShareAmount||0) },
-      { recipient:'PARTNER', label:getConfig().partnerName || 'Technical', nominal:Number(tx.partnerShareAmount||0) }
+      { recipient:'BASE', label:actor.baseName, nominal: sourceDeposit.resellerId ? roundMoney2(grossEquivalent * (Number(base.shares.baseFromReseller||0)/100)) : 0 },
+      { recipient:'ACTOR', label:'Pelaku', nominal: actorShare },
+      { recipient:'OWNER', label:getConfig().ownerName || 'System', nominal:roundMoney2(grossEquivalent * (Number(base.shares.owner||0)/100)) },
+      { recipient:'PARTNER', label:getConfig().partnerName || 'Technical', nominal:roundMoney2(grossEquivalent * (Number(base.shares.partner||0)/100)) }
     ];
     for(const part of parts){
       if(part.nominal <= 0) continue;
       rows.push({
         id:`AUTO-BAGI-${tx.id}-${part.recipient}`,
         moduleType:'BAGIHASIL_AUTO',
-        baseId:tx.baseId,
-        resellerId:tx.resellerId || '',
-        actorKey:tx.actorKey,
+        baseId:sourceDeposit.baseId,
+        resellerId:sourceDeposit.resellerId || '',
+        actorKey:sourceDeposit.actorKey,
         recipient:part.recipient,
         recipientLabel: part.label,
-        nominal:part.nominal,
-        notes:`Bagi hasil otomatis dari deposit ${actor.actorName}.`,
+        nominal:roundMoney2(part.nominal),
+        notes:`Bagi hasil otomatis dari setoran ${actor.actorName}. Setor Rp ${rupiah(tx.nominal||0)}, dasar ekuivalen Rp ${rupiah(grossEquivalent)}.`,
         date:tx.date,
         time:tx.time,
         baseName:actor.baseName,
-        actorName:actor.actorName
+        actorName:actor.actorName,
+        sourceDepositId:sourceDeposit.id,
+        sourceSetorId:tx.id,
+        grossEquivalent,
+        setorNominal:Number(tx.nominal||0),
+        settlementRatio:setorSettlementRatio(sourceDeposit)
       });
     }
   }
@@ -300,8 +359,9 @@ function sumModuleType(type){ return APP.state.moduleTransactions.filter(x=>x.mo
 function countModuleType(type){ return APP.state.moduleTransactions.filter(x=>x.moduleType===type).length; }
 function moduleTabMeta(tab){
   return {
-    deposit:{ type:'DEPOSIT', title:'Deposit / Distribusi', note:'Input deposit. Piutang dan bagi hasil dihitung otomatis.' },
-    setor:{ type:'SETOR', title:'Setoran Masuk', note:'Data setoran mengikuti transaksi deposit. Pilih salah satu deposit lalu atur nominal setoran sesuai aktual.' }
+    deposit:{ type:'DEPOSIT', title:'Deposit / Distribusi', note:'Input deposit. Piutang dihitung dari target setor, sedangkan bagi hasil dihitung saat setoran masuk.' },
+    setor:{ type:'SETOR', title:'Setoran Masuk', note:'Data setoran mengikuti transaksi deposit. Satu deposit bisa dicicil beberapa kali sesuai tanggal setoran aktual.' },
+    receipt:{ type:'SETOR', title:'Cetak Bukti Setoran', note:'Cetak bukti setoran thermal 58 mm berdasarkan setoran yang sudah tersimpan.' }
   }[tab] || { type:'DEPOSIT', title:'Deposit / Distribusi', note:'Cukup input deposit.' };
 }
 function moduleFormSection(meta){
@@ -339,7 +399,7 @@ function moduleFormSection(meta){
         <div><span class="text-slate-500 dark:text-slate-400">Jenis</span><div class="font-semibold">${meta.title}</div></div>
         <div><span class="text-slate-500 dark:text-slate-400">Mode Base</span><div class="font-semibold">${selectedBase ? BASE_MODES[selectedBase.mode].label : '-'}</div></div>
         <div><span class="text-slate-500 dark:text-slate-400">Target Setor</span><div class="font-semibold">Rp ${rupiah(expected)}</div></div>
-        ${f.txType==='SETOR' ? `<div><span class="text-slate-500 dark:text-slate-400">Sisa Piutang Setelah Setor</span><div class="font-semibold ${Math.max(0, expected-Number(f.nominal||0))>0?'text-amber-600':'text-emerald-600'}">Rp ${rupiah(Math.max(0, expected-Number(f.nominal||0)))}</div></div>` : ''}
+        ${f.txType==='SETOR' ? (()=>{ const paidBefore = sourceDeposit ? sumLinkedSetorsForDeposit(sourceDeposit.id, APP.state.editModuleId || '') : 0; const remainingAfter = Math.max(0, expected - paidBefore - Number(f.nominal||0)); return `<div><span class="text-slate-500 dark:text-slate-400">Sudah Disetor Sebelumnya</span><div class="font-semibold text-blue-600">Rp ${rupiah(paidBefore)}</div></div><div><span class="text-slate-500 dark:text-slate-400">Sisa Piutang Setelah Setor</span><div class="font-semibold ${remainingAfter>0?'text-amber-600':'text-emerald-600'}">Rp ${rupiah(remainingAfter)}</div></div>`; })() : ''}
         <div><span class="text-slate-500 dark:text-slate-400">Catatan Mode</span><div>${selectedBase ? BASE_MODES[selectedBase.mode].note : 'Pilih base terlebih dahulu.'}</div></div>
       </div>
     </div>
@@ -353,7 +413,7 @@ function summaryCardsForTab(tab){
       ${card('Total Deposit', `Rp ${rupiah(auto.grand.gross)}`, `${auto.grand.deposits} transaksi`, 'text-emerald-600')}
       ${card('Total Setoran', `Rp ${rupiah(auto.grand.actual)}`, `${auto.grand.setors} transaksi`, 'text-blue-600')}
       ${card('Piutang Otomatis', `Rp ${rupiah(auto.grand.receivable)}`, 'Deposit - setoran', auto.grand.receivable>0?'text-amber-600':'text-emerald-600')}
-      ${card('Bagi Hasil Otomatis', `Rp ${rupiah(auto.grand.actorShare + auto.grand.baseShare + auto.grand.ownerShare + auto.grand.partnerShare)}`, 'Dihitung dari deposit', 'text-purple-600')}
+      ${card('Bagi Hasil Otomatis', `Rp ${rupiah(auto.grand.actorShare + auto.grand.baseShare + auto.grand.ownerShare + auto.grand.partnerShare)}`, 'Dihitung dari setoran', 'text-purple-600')}
     </div>`;
   }
   return '';
@@ -362,32 +422,43 @@ function transactionsTableForTab(tab){
   if(tab==='setor'){
     const rows = filterMirroredSetorRows(mirroredSetorRows());
     const totals = rows.reduce((a,r)=>({ deposit:a.deposit+r.depositNominal, target:a.target+r.targetSetor, setor:a.setor+r.setorNominal, piutang:a.piutang+r.receivable }), { deposit:0, target:0, setor:0, piutang:0 });
-    return `${moduleQuickFilterBar('setor')}<div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal Deposit</th><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-left">Pelaku</th><th class="px-3 py-2 text-right">Deposit</th><th class="px-3 py-2 text-right">Target Setor</th><th class="px-3 py-2 text-right">Setoran</th><th class="px-3 py-2 text-right">Piutang</th><th class="px-3 py-2 text-left">Tanggal Setor</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${rows.map(row=>`<tr class="border-b"><td class="px-3 py-2">${formatDateTime(row.depositDate,row.depositTime)}</td><td class="px-3 py-2">${escapeHtml(row.baseName)}</td><td class="px-3 py-2">${escapeHtml(row.actorName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.depositNominal)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(row.targetSetor)}</td><td class="px-3 py-2 text-right ${row.setorNominal>0?'text-blue-600 font-semibold':''}">Rp ${rupiah(row.setorNominal)}</td><td class="px-3 py-2 text-right ${row.receivable>0?'text-amber-600 font-semibold':'text-emerald-600'}">Rp ${rupiah(row.receivable)}</td><td class="px-3 py-2">${row.setorId ? formatDateTime(row.setorDate,row.setorTime) : '-'}</td><td class="px-3 py-2"><span class="badge ${row.receivable>0?'badge-amber':'badge-emerald'}">${row.statusLabel}</span></td><td class="px-3 py-2 text-center"><div class="inline-flex items-center justify-center gap-1 whitespace-nowrap"><button data-setor-from-deposit="${row.depositId}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600 whitespace-nowrap">${row.setorId?'Ubah Setoran':'Atur Setoran'}</button>${row.setorId?`<button data-module-delete="${row.setorId}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-rose-600 whitespace-nowrap">Hapus Setoran</button>`:''}</div></td></tr>`).join('') || `<tr><td colspan="10" class="px-3 py-8 text-center text-slate-500">Belum ada data deposit untuk dibuatkan setoran.</td></tr>`}<tr class="bg-slate-50 font-semibold dark:bg-slate-800/50"><td class="px-3 py-2" colspan="3">TOTAL</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.deposit)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.target)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.setor)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.piutang)}</td><td class="px-3 py-2" colspan="3"></td></tr></tbody></table></div>`;
+    return `${moduleQuickFilterBar('setor')}<div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal Deposit</th><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-left">Pelaku</th><th class="px-3 py-2 text-right">Deposit</th><th class="px-3 py-2 text-right">Target Setor</th><th class="px-3 py-2 text-right">Setoran</th><th class="px-3 py-2 text-right">Piutang</th><th class="px-3 py-2 text-left">Tanggal Setor</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2 text-left">Cicilan</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${rows.map(row=>`<tr class="border-b"><td class="px-3 py-2">${formatDateTime(row.depositDate,row.depositTime)}</td><td class="px-3 py-2">${escapeHtml(row.baseName)}</td><td class="px-3 py-2">${escapeHtml(row.actorName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.depositNominal)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(row.targetSetor)}</td><td class="px-3 py-2 text-right ${row.setorNominal>0?'text-blue-600 font-semibold':''}">Rp ${rupiah(row.setorNominal)}</td><td class="px-3 py-2 text-right ${row.receivable>0?'text-amber-600 font-semibold':'text-emerald-600'}">Rp ${rupiah(row.receivable)}</td><td class="px-3 py-2">${row.setorId ? formatDateTime(row.setorDate,row.setorTime) : '-'}</td><td class="px-3 py-2"><span class="badge ${row.receivable>0?'badge-amber':'badge-emerald'}">${row.statusLabel}</span></td><td class="px-3 py-2">${row.setorCount>1?`<span class="badge badge-blue">${row.setorCount}x cicilan</span>`:(row.setorCount===1?'<span class="badge badge-emerald">1x bayar</span>':'-')}</td><td class="px-3 py-2 text-center"><div class="inline-flex items-center justify-center gap-1 whitespace-nowrap"><button data-setor-from-deposit="${row.depositId}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600 whitespace-nowrap">${row.setorId?'Tambah Setoran':'Atur Setoran'}</button><button data-setor-history="${row.depositId}" class="rounded-xl border px-3 py-1 text-xs font-semibold whitespace-nowrap">Riwayat</button>${row.setorId?`<button data-print-setor="${row.setorId}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-emerald-600 whitespace-nowrap">Cetak</button><button data-module-delete="${row.setorId}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-rose-600 whitespace-nowrap">Hapus Setoran Terakhir</button>`:''}</div></td></tr>`).join('') || `<tr><td colspan="11" class="px-3 py-8 text-center text-slate-500">Belum ada data deposit untuk dibuatkan setoran.</td></tr>`}<tr class="bg-slate-50 font-semibold dark:bg-slate-800/50"><td class="px-3 py-2" colspan="3">TOTAL</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.deposit)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.target)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.setor)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(totals.piutang)}</td><td class="px-3 py-2" colspan="4"></td></tr></tbody></table></div>`;
   }
   const type = moduleTabToType(tab);
   const rows = (type==='DEPOSIT' ? filterDepositRows(getFilteredModuleTransactions(type)) : getFilteredModuleTransactions(type)).map(txDecorated);
   const showTarget = ['DEPOSIT','SETOR'].includes(type);
-  return `${moduleQuickFilterBar('deposit')}<div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal</th><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-left">Pelaku</th><th class="px-3 py-2 text-right">Nominal</th>${showTarget?'<th class="px-3 py-2 text-right">Target</th>':''}<th class="px-3 py-2 text-left">Catatan</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${rows.map(tx=>`<tr class="border-b"><td class="px-3 py-2 whitespace-nowrap">${formatDateTime(tx.date,tx.time)}</td><td class="px-3 py-2">${escapeHtml(tx.baseName)}</td><td class="px-3 py-2">${escapeHtml(tx.actorName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(tx.nominal)}</td>${showTarget?`<td class="px-3 py-2 text-right">Rp ${rupiah(tx.expectedSetor||0)}</td>`:''}<td class="px-3 py-2">${escapeHtml(tx.notes||'-')}</td><td class="px-3 py-2 text-center"><div class="inline-flex items-center justify-center gap-1 whitespace-nowrap"><button data-module-edit="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold whitespace-nowrap">Edit</button><button data-setor-from-deposit="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600 whitespace-nowrap">Atur Setoran</button><button data-module-delete="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-rose-600 whitespace-nowrap">Hapus</button></div></td></tr>`).join('') || `<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">Belum ada transaksi.</td></tr>`}</tbody></table></div>`;
+  return `${moduleQuickFilterBar('deposit')}<div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal</th><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-left">Pelaku</th><th class="px-3 py-2 text-right">Nominal</th>${showTarget?'<th class="px-3 py-2 text-right">Target</th><th class="px-3 py-2 text-left">Status Setor</th>':''}<th class="px-3 py-2 text-left">Catatan</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${rows.map(tx=>{ const paid=sumLinkedSetorsForDeposit(tx.id); const target=Number(tx.expectedSetor||0); const isPartial=paid>0 && paid<target; const isFull=target>0 && paid>=target; return `<tr class="border-b"><td class="px-3 py-2 whitespace-nowrap">${formatDateTime(tx.date,tx.time)}</td><td class="px-3 py-2">${escapeHtml(tx.baseName)}</td><td class="px-3 py-2">${escapeHtml(tx.actorName)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(tx.nominal)}</td>${showTarget?`<td class="px-3 py-2 text-right">Rp ${rupiah(tx.expectedSetor||0)}</td><td class="px-3 py-2">${isPartial?'<span class="badge badge-blue">Dicicil</span>':(isFull?'<span class="badge badge-emerald">Lunas</span>':'<span class="badge badge-amber">Belum Setor</span>')}</td>`:''}<td class="px-3 py-2">${escapeHtml(tx.notes||'-')}</td><td class="px-3 py-2 text-center"><div class="inline-flex items-center justify-center gap-1 whitespace-nowrap"><button data-module-edit="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold whitespace-nowrap">Edit</button><button data-setor-from-deposit="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-blue-600 whitespace-nowrap">Atur Setoran</button><button data-setor-history="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold whitespace-nowrap">Riwayat</button><button data-module-delete="${tx.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-rose-600 whitespace-nowrap">Hapus</button></div></td></tr>`; }).join('') || `<tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">Belum ada transaksi.</td></tr>`}</tbody></table></div>`;
+}
+
+function receiptPrintPage(){
+  const rows = getFilteredModuleTransactions('SETOR').map(tx=>{
+    const sourceDeposit = tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') : null;
+    const base = sourceDeposit ? findBase(sourceDeposit.baseId) : findBase(tx.baseId);
+    const info = sourceDeposit ? setorInstallmentInfo(tx, sourceDeposit) : null;
+    return { ...txDecorated(tx), sourceDeposit, base, info };
+  });
+  return `<div class="space-y-4"><div class="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">Menu ini digunakan untuk mencetak bukti setoran Base/Reseller pada printer thermal 58 mm. Gunakan filter Base/Pelaku/tanggal di bawah untuk memilih setoran yang ingin dicetak.</div>${moduleQuickFilterBar('setor')}<div class="table-wrap"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Tanggal Setor</th><th class="px-3 py-2 text-left">Base</th><th class="px-3 py-2 text-left">Pelaku</th><th class="px-3 py-2 text-right">Deposit</th><th class="px-3 py-2 text-right">Target</th><th class="px-3 py-2 text-right">Dibayar Ini</th><th class="px-3 py-2 text-right">Dibayar sd Ini</th><th class="px-3 py-2 text-right">Sisa</th><th class="px-3 py-2 text-left">Cicilan</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${rows.map(row=>`<tr class="border-b"><td class="px-3 py-2">${formatDateTime(row.date,row.time)}</td><td class="px-3 py-2">${escapeHtml(row.baseName)}</td><td class="px-3 py-2">${escapeHtml(row.actorName)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(row.sourceDeposit?.nominal||0)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(row.sourceDeposit?.expectedSetor||0)}</td><td class="px-3 py-2 text-right font-semibold">Rp ${rupiah(row.nominal)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(row.info?.paidUntilThis||0)}</td><td class="px-3 py-2 text-right ${Number(row.info?.remainingAfter||0)>0?'text-amber-600 font-semibold':'text-emerald-600'}">Rp ${rupiah(row.info?.remainingAfter||0)}</td><td class="px-3 py-2">${row.info?`Ke-${row.info.installmentNo} dari ${row.info.installmentCount}`:'-'}</td><td class="px-3 py-2 text-center"><button data-print-setor="${row.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-emerald-600">Cetak 58mm</button></td></tr>`).join('') || `<tr><td colspan="10" class="px-3 py-8 text-center text-slate-500">Belum ada data setoran sesuai filter.</td></tr>`}</tbody></table></div></div>`;
 }
 
 
 function modulesPage(){
-  if(!['deposit','setor','masters'].includes(APP.state.moduleTab)) APP.state.moduleTab = 'deposit';
+  if(!['deposit','setor','receipt','masters'].includes(APP.state.moduleTab)) APP.state.moduleTab = 'deposit';
   const meta = moduleTabMeta(APP.state.moduleTab);
   return `
   <div class="space-y-4">
     <section class="rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">
       <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div><h2 class="text-xl font-bold">Modul Transaksi Base</h2><p class="text-sm text-slate-500 dark:text-slate-400">Deposit dan Setoran. Piutang serta bagi hasil dihitung otomatis dari deposit.</p></div>
+        <div><h2 class="text-xl font-bold">Modul Transaksi Base</h2><p class="text-sm text-slate-500 dark:text-slate-400">Deposit dan Setoran. Piutang dihitung dari target setor, sedangkan bagi hasil dihitung dari setoran aktual.</p></div>
         <div class="grid grid-cols-2 gap-2 lg:grid-cols-5">
           ${[
             {key:'deposit',label:'Deposit'},
             {key:'setor',label:'Setoran'},
+            {key:'receipt',label:'Cetak Bukti Setoran'},
             {key:'masters',label:'Master Base/Reseller'}
           ].map(x=>`<button data-module-tab="${x.key}" data-active="${APP.state.moduleTab===x.key}" class="tab-btn rounded-2xl border px-4 py-2 text-sm font-semibold">${x.label}</button>`).join('')}
         </div>
       </div>
-      ${APP.state.moduleTab==='masters' ? moduleMasterPage() : `${moduleFormSection(meta)}${summaryCardsForTab(APP.state.moduleTab)}${transactionsTableForTab(APP.state.moduleTab)}`}
+      ${APP.state.moduleTab==='masters' ? moduleMasterPage() : (APP.state.moduleTab==='receipt' ? receiptPrintPage() : `${moduleFormSection(meta)}${summaryCardsForTab(APP.state.moduleTab)}${transactionsTableForTab(APP.state.moduleTab)}`)}
     </section>
   </div>`;
 }
@@ -422,6 +493,32 @@ function moduleMasterPage(){
       </div>`).join('')}</div>
       <div class="flex justify-end"><button id="saveConfigBtn" class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white">Simpan Konfigurasi Base/Reseller</button></div>
   </div>`;
+}
+
+function openSetorHistoryModal(depositId=''){
+  const deposit = APP.state.moduleTransactions.find(x=>x.id===depositId && x.moduleType==='DEPOSIT');
+  if(!deposit) return showToast('Data deposit tidak ditemukan.', 'error');
+  const dec = txDecorated(deposit);
+  const setors = linkedSetorsForDepositAsc(deposit.id);
+  const target = Number(deposit.expectedSetor||0);
+  const paid = setors.reduce((sum,x)=>sum+Number(x.nominal||0),0);
+  const modalRoot = document.getElementById('modalRoot');
+  modalRoot.innerHTML = `<div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"><div class="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-4 shadow-soft dark:border-slate-700 dark:bg-slate-900"><div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-lg font-bold">Riwayat Cicilan Setoran</h3><p class="text-sm text-slate-500 dark:text-slate-400">${escapeHtml(dec.baseName)} · ${escapeHtml(dec.actorName)}</p></div><button id="closeSetorHistoryBtn" class="rounded-2xl border px-3 py-2 text-sm font-semibold">Tutup</button></div><div class="grid grid-cols-1 gap-3 md:grid-cols-4 text-sm"><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800"><div class="text-slate-500">Deposit</div><div class="font-bold">Rp ${rupiah(deposit.nominal)}</div></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800"><div class="text-slate-500">Target Setor</div><div class="font-bold">Rp ${rupiah(target)}</div></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800"><div class="text-slate-500">Sudah Dibayar</div><div class="font-bold text-blue-600">Rp ${rupiah(paid)}</div></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800"><div class="text-slate-500">Sisa</div><div class="font-bold ${Math.max(0,target-paid)>0?'text-amber-600':'text-emerald-600'}">Rp ${rupiah(Math.max(0,target-paid))}</div></div></div><div class="table-wrap mt-4"><table class="min-w-full text-sm whitespace-nowrap"><thead><tr class="border-b"><th class="px-3 py-2 text-left">Cicilan</th><th class="px-3 py-2 text-left">Tanggal/Jam</th><th class="px-3 py-2 text-right">Dibayar Ini</th><th class="px-3 py-2 text-right">Dibayar sd Ini</th><th class="px-3 py-2 text-right">Sisa</th><th class="px-3 py-2 text-left">Catatan</th><th class="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>${setors.map(st=>{ const info=setorInstallmentInfo(st, deposit); return `<tr class="border-b"><td class="px-3 py-2">Ke-${info.installmentNo}</td><td class="px-3 py-2">${formatDateTime(st.date,st.time)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(st.nominal)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(info.paidUntilThis)}</td><td class="px-3 py-2 text-right">Rp ${rupiah(info.remainingAfter)}</td><td class="px-3 py-2">${escapeHtml(st.notes||'-')}</td><td class="px-3 py-2 text-center"><button data-print-setor="${st.id}" class="rounded-xl border px-3 py-1 text-xs font-semibold text-emerald-600">Cetak</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">Belum ada cicilan setoran.</td></tr>'}</tbody></table></div></div></div>`;
+  document.getElementById('closeSetorHistoryBtn')?.addEventListener('click', ()=>{ modalRoot.innerHTML=''; });
+  modalRoot.querySelectorAll('[data-print-setor]').forEach(btn=>btn.addEventListener('click', ()=> printSetorReceipt(btn.dataset.printSetor)));
+}
+function printSetorReceipt(setorId=''){
+  const setor = APP.state.moduleTransactions.find(x=>x.id===setorId && x.moduleType==='SETOR');
+  if(!setor) return showToast('Data setoran tidak ditemukan.', 'error');
+  const deposit = setor.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===setor.linkedDepositId && x.moduleType==='DEPOSIT') : null;
+  if(!deposit) return showToast('Deposit sumber setoran tidak ditemukan.', 'error');
+  const dec = txDecorated(deposit);
+  const info = setorInstallmentInfo(setor, deposit);
+  const receiptNo = `STR-${String(setor.date||'').replaceAll('-','')}-${String(setor.time||'').replace(/\D/g,'')}-${String(setor.id||'').slice(0,4).toUpperCase()}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Bukti Setoran</title><style>@page{size:58mm auto;margin:0;}*{box-sizing:border-box;}body{width:58mm;margin:0;padding:0;font-family:Arial,sans-serif;color:#000;}.receipt{width:58mm;padding:3mm;font-size:10.5px;line-height:1.25;}.center{text-align:center;}.title{font-weight:700;font-size:13px;}.muted{font-size:9px;}.line{border-top:1px dashed #000;margin:6px 0;}.row{display:flex;justify-content:space-between;gap:4px;margin:2px 0;}.row span:first-child{max-width:25mm;}.row span:last-child{text-align:right;font-weight:700;}.note{margin-top:6px;font-size:9px;}</style></head><body><div class="receipt"><div class="center title">ORBITNET HOTSPOT</div><div class="center">BUKTI SETORAN</div><div class="center muted">${escapeHtml(receiptNo)}</div><div class="line"></div><div class="row"><span>Tanggal</span><span>${formatDateTime(setor.date,setor.time)} WIB</span></div><div class="row"><span>Base</span><span>${escapeHtml(dec.baseName)}</span></div><div class="row"><span>Pelaku</span><span>${escapeHtml(dec.actorName)}</span></div><div class="line"></div><div class="row"><span>Deposit</span><span>Rp ${rupiah(deposit.nominal)}</span></div><div class="row"><span>Target Setor</span><span>Rp ${rupiah(deposit.expectedSetor)}</span></div><div class="row"><span>Sudah Dibayar</span><span>Rp ${rupiah(info.paidBefore)}</span></div><div class="row"><span>Dibayar Ini</span><span>Rp ${rupiah(setor.nominal)}</span></div><div class="row"><span>Dibayar sd Ini</span><span>Rp ${rupiah(info.paidUntilThis)}</span></div><div class="row"><span>Sisa</span><span>Rp ${rupiah(info.remainingAfter)}</span></div><div class="row"><span>Cicilan</span><span>Ke-${info.installmentNo} dari ${info.installmentCount}</span></div><div class="line"></div><div class="note">Catatan: ${escapeHtml(setor.notes || '-')}</div><div class="line"></div><div class="center muted">Dicetak: ${nowParts().display} WIB</div><div class="center muted">Terima kasih</div></div><script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script></body></html>`;
+  const win = window.open('', '_blank', 'width=380,height=640');
+  if(!win) return showToast('Popup diblokir browser. Izinkan popup untuk mencetak.', 'error');
+  win.document.open(); win.document.write(html); win.document.close();
 }
 async function saveModuleTransaction(){
   const f = APP.state.forms.module;
@@ -464,8 +561,10 @@ async function saveModuleTransaction(){
     payload.resellerId = sourceDeposit.resellerId || '';
     payload.actorKey = sourceDeposit.actorKey;
     payload.expectedSetor = Number(sourceDeposit.expectedSetor||0);
-    if(payload.nominal > payload.expectedSetor){
-      return showToast('Nominal setoran tidak boleh melebihi target setor deposit.', 'error');
+    const alreadyPaid = sumLinkedSetorsForDeposit(sourceDeposit.id, payload.id);
+    const remaining = Math.max(0, payload.expectedSetor - alreadyPaid);
+    if(payload.nominal > remaining){
+      return showToast(`Nominal setoran melebihi sisa target. Sisa yang boleh disetor: Rp ${rupiah(remaining)}.`, 'error');
     }
   }
   await DB.put(STORES.moduleTransactions, payload);
@@ -495,6 +594,8 @@ function bindModuleEvents(){
   document.getElementById('cancelModuleEditBtn')?.addEventListener('click', ()=>{ APP.state.editModuleId=null; resetModuleForm(); render(); });
   document.querySelectorAll('[data-module-edit]').forEach(btn=>btn.addEventListener('click', ()=>{ const tx=APP.state.moduleTransactions.find(x=>x.id===btn.dataset.moduleEdit); if(tx){ fillModuleForm(tx); APP.state.currentPage='modules'; render(); }}));
   document.querySelectorAll('[data-setor-from-deposit]').forEach(btn=>btn.addEventListener('click', ()=> startSetorFromDeposit(btn.dataset.setorFromDeposit)));
+  document.querySelectorAll('[data-setor-history]').forEach(btn=>btn.addEventListener('click', ()=> openSetorHistoryModal(btn.dataset.setorHistory)));
+  document.querySelectorAll('[data-print-setor]').forEach(btn=>btn.addEventListener('click', ()=> printSetorReceipt(btn.dataset.printSetor)));
   document.querySelectorAll('[data-module-delete]').forEach(btn=>btn.addEventListener('click', async ()=>{ if(!confirm('Hapus transaksi modul ini?')) return; await DB.delete(STORES.moduleTransactions, btn.dataset.moduleDelete); await loadState(); render(); showToast('Transaksi modul dihapus.'); }));
   document.getElementById('saveIdentityBtn')?.addEventListener('click', ()=>{ APP.state.config = getConfig(); APP.state.config.partnerName = document.getElementById('partnerNameInput').value.trim() || 'Technical'; APP.state.config.ownerName = document.getElementById('ownerNameInput').value.trim() || 'System'; saveModuleConfig(); });
   document.getElementById('addBaseBtn')?.addEventListener('click', ()=>{ APP.state.config = getConfig(); APP.state.config.bases.push({ id:uuid(), name:'Base Baru', mode:'FULL', directEnabled:true, shares:{...DEFAULT_SHARE}, resellers:[] }); render(); });

@@ -11,7 +11,9 @@ const MODULE_TYPES = {
   DEPOSIT: 'Deposit/Distribusi',
   SETOR: 'Setoran Masuk',
   PIUTANG: 'Piutang',
-  BAGIHASIL: 'Bagi Hasil'
+  BAGIHASIL: 'Bagi Hasil',
+  BAGIHASIL_AUTO: 'Bagi Hasil Otomatis',
+  PIUTANG_AUTO: 'Piutang Otomatis'
 };
 const RESERVE_ENTRY_TYPES = { CREDIT:'Tambah Saldo', DEBIT:'Penggunaan Dana' };
 const PROFIT_RECIPIENTS = { ACTOR: 'Pelaku', OWNER: 'Owner/System', PARTNER: 'Partner/Technical' };
@@ -64,7 +66,15 @@ window.APP = APP;
 function uuid(){ return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function escapeHtml(str=''){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s])); }
 function parseNum(value){ return Number(String(value ?? '').replace(/\D/g,'')) || 0; }
-function rupiah(value){ return Number(value||0).toLocaleString('id-ID'); }
+function roundMoney2(value){
+  const n = Number(value || 0);
+  if(!isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+function rupiah(value){
+  const n = roundMoney2(value);
+  return n.toLocaleString('id-ID', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
+}
 function nowParts(){
   const fmt = new Intl.DateTimeFormat('sv-SE',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
   const p = fmt.formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});
