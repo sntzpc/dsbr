@@ -28,6 +28,7 @@ const APP = {
     { key: 'debts', label: 'Hutang', icon: '🧾' },
     { key: 'ipregister', label: 'Register IP AP', icon: '📡' },
     { key: 'reports', label: 'Laporan', icon: '📑' },
+    { key: 'audit', label: 'Audit', icon: '🔎' },
     { key: 'settings', label: 'Pengaturan', icon: '⚙️' }
   ],
   state: {
@@ -45,6 +46,7 @@ const APP = {
     mainFilters: { startDate:'', endDate:'', type:'ALL', search:'' },
     moduleFilters: { modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL' },
     reportFilters: { mainStart:'', mainEnd:'', modStart:'', modEnd:'', baseId:'ALL', actorKey:'ALL', modSearch:'', depositSmart:'ALL', setorSmart:'ALL', integrationPeriod:'', integrationDate:todayDateIso(), integrationTime:currentTimeWIB() },
+    auditFilters: { period:'', baseId:'ALL', kind:'ALL', search:'' },
     reserveFilters: { startDate:'', endDate:'', fundType:'ALL', entryType:'ALL', search:'' },
     assetFilters: { startDate:'', endDate:'', search:'' },
     debtFilters: { startDate:'', endDate:'', status:'ALL', recipientType:'ALL', period:'', search:'' },
@@ -607,10 +609,11 @@ function render(){
   if(APP.state.currentPage==='modules') root.innerHTML = modulesPage();
   if(APP.state.currentPage==='reserve') root.innerHTML = reserveFundsPage();
   if(APP.state.currentPage==='reports') root.innerHTML = reportsPage();
+  if(APP.state.currentPage==='audit') root.innerHTML = typeof auditPage === 'function' ? auditPage() : '<div class="rounded-3xl border bg-white p-4 shadow-soft dark:border-slate-800 dark:bg-slate-900">Halaman Audit belum termuat.</div>';
   if(APP.state.currentPage==='assets') root.innerHTML = assetsPage();
   if(APP.state.currentPage==='debts') root.innerHTML = debtsPage();
   if(APP.state.currentPage==='settings') root.innerHTML = settingsPage();
   if(APP.state.currentPage==='ipregister') root.innerHTML = ipRegisterPage();
-  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); bindIpRegisterEvents(); updateClock();
+  bindCoreEvents(); bindMainEvents(); bindModuleEvents(); bindReserveEvents(); bindReportEvents(); if(typeof bindAuditEvents === 'function') bindAuditEvents(); bindAssetsEvents(); bindDebtEvents(); bindSettingsEvents(); bindIpRegisterEvents(); updateClock();
 }
 window.addEventListener('DOMContentLoaded', async ()=>{ await DB.open(); await seedIfNeeded(); await loadState(); bindPersistentUiEvents(); render(); updateClock(); setInterval(updateClock, 1000); });

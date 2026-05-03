@@ -112,18 +112,25 @@ window.SYNC = {
                 <th class="px-3 py-2 text-left">Kunci</th>
                 <th class="px-3 py-2 text-left">Update</th>
                 <th class="px-3 py-2 text-left">Pesan</th>
+                <th class="px-3 py-2 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              ${rows.map(row=>`<tr class="border-b">
+              ${rows.map(row=>`<tr class="border-b align-top">
                 <td class="px-3 py-2 text-center"><input data-queue-check="${row.id}" type="checkbox" ${this.queueSelection[row.id]?'checked':''}></td>
                 <td class="px-3 py-2"><span class="rounded-full px-2 py-1 text-xs font-semibold ${row.status==='failed'?'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300':'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}">${escapeHtml(row.status.toUpperCase())}</span></td>
                 <td class="px-3 py-2">${escapeHtml(row.storeName)}</td>
                 <td class="px-3 py-2">${escapeHtml(row.op)}</td>
                 <td class="px-3 py-2">${escapeHtml(row.recordKey || '-')}</td>
                 <td class="px-3 py-2">${escapeHtml(String(row.updatedAt||'-').replace('T',' ').slice(0,19))}</td>
-                <td class="px-3 py-2">${escapeHtml(row.error || '-')}</td>
-              </tr>`).join('') || `<tr><td colspan="7" class="px-3 py-8 text-center text-slate-500">Tidak ada antrean gagal/pending.</td></tr>`}
+                <td class="max-w-[340px] px-3 py-2 whitespace-normal text-xs text-slate-600 dark:text-slate-300">${escapeHtml(row.error || '-')}</td>
+                <td class="px-3 py-2">
+                  <div class="inline-flex flex-nowrap items-center justify-center gap-1 whitespace-nowrap">
+                    <button type="button" data-queue-detail="${escapeHtml(row.id)}" class="whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800">Detail</button>
+                    <button type="button" data-queue-delete="${escapeHtml(row.id)}" class="whitespace-nowrap rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">Hapus</button>
+                  </div>
+                </td>
+              </tr>`).join('') || `<tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">Tidak ada antrean gagal/pending.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -403,6 +410,114 @@ DB.delete = async (store, key) => {
       if(!this.progress.active || this.progress.value===100) setTimeout(()=>{ this.resetProgress(this.progress.label || 'Selesai.'); if(APP.state.currentPage==='dashboard' || APP.state.currentPage==='syncFailed') render(); }, 1500);
     }
   },
+  queuePayloadRows(item){
+    const rows = [
+      ['ID Antrean', item?.id || '-'],
+      ['Status', String(item?.status || '-').toUpperCase()],
+      ['Store / Sheet', item?.storeName || '-'],
+      ['Operasi Sync', item?.op === 'delete' ? 'DELETE / HAPUS DI SERVER' : 'UPSERT / TAMBAH-UPDATE DI SERVER'],
+      ['Kunci Record', item?.recordKey || '-'],
+      ['Update Terakhir', String(item?.updatedAt || '-').replace('T',' ').slice(0,19)],
+      ['Pesan Error', item?.error || '-']
+    ];
+
+    const payload = item?.payload;
+    if(item?.op === 'delete'){
+      rows.push(['Keterangan', 'Antrean ini akan menghapus record dengan kunci di atas dari Google Sheets saat proses sync.']);
+      return rows;
+    }
+    if(!payload || typeof payload !== 'object'){
+      rows.push(['Payload', payload == null ? '-' : String(payload)]);
+      return rows;
+    }
+
+    const walk = (obj, prefix='') => {
+      Object.entries(obj).forEach(([key, value]) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if(Array.isArray(value)){
+          if(!value.length) rows.push([path, '[]']);
+          else if(value.every(v => v === null || ['string','number','boolean'].includes(typeof v))) rows.push([path, value.join(', ')]);
+          else rows.push([path, JSON.stringify(value, null, 2)]);
+        } else if(value && typeof value === 'object'){
+          const entries = Object.keys(value);
+          if(!entries.length) rows.push([path, '{}']);
+          else walk(value, path);
+        } else {
+          rows.push([path, value == null || value === '' ? '-' : String(value)]);
+        }
+      });
+    };
+    walk(payload);
+    return rows;
+  },
+  queueDetailModal(item){
+    if(!item) return '';
+    const rows = this.queuePayloadRows(item);
+    return `
+      <div class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-3" data-queue-modal-backdrop>
+        <div class="card flex max-h-[92vh] w-full max-w-5xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div class="sticky top-0 z-10 flex items-start justify-between gap-3 rounded-t-3xl border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div>
+              <h3 class="text-lg font-bold">Detail Data Antrean Sync</h3>
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Periksa data yang akan dikirim atau dihapus dari Google Sheets sebelum disinkronkan.</p>
+            </div>
+            <button type="button" id="closeQueueDetailModal" class="rounded-2xl border px-3 py-2 text-sm font-semibold">Tutup</button>
+          </div>
+          <div class="overflow-auto p-4">
+            <div class="mb-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+              <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/70"><p class="text-xs text-slate-500">Status</p><p class="font-bold">${escapeHtml(String(item.status||'-').toUpperCase())}</p></div>
+              <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/70"><p class="text-xs text-slate-500">Store</p><p class="font-bold">${escapeHtml(item.storeName||'-')}</p></div>
+              <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/70"><p class="text-xs text-slate-500">Operasi</p><p class="font-bold">${escapeHtml(item.op||'-')}</p></div>
+              <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/70"><p class="text-xs text-slate-500">Kunci</p><p class="font-bold break-all">${escapeHtml(item.recordKey||'-')}</p></div>
+            </div>
+            <div class="table-wrap">
+              <table class="min-w-full text-sm">
+                <thead>
+                  <tr class="border-b bg-slate-50 dark:bg-slate-800/70">
+                    <th class="w-[260px] px-3 py-2 text-left">Field</th>
+                    <th class="px-3 py-2 text-left">Isi Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(([field, value]) => `<tr class="border-b align-top"><td class="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300">${escapeHtml(field)}</td><td class="px-3 py-2 whitespace-pre-wrap break-words">${escapeHtml(value)}</td></tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center justify-end gap-2 rounded-b-3xl border-t border-slate-200 p-4 dark:border-slate-800">
+            <button type="button" data-queue-delete-from-modal="${escapeHtml(item.id)}" class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Hapus dari Antrean</button>
+            <button type="button" id="closeQueueDetailModalBottom" class="rounded-2xl border px-4 py-2 text-sm font-semibold">Tutup</button>
+          </div>
+        </div>
+      </div>`;
+  },
+  openQueueDetail(id){
+    const item = (APP.state.syncQueue || []).find(x => x.id === id);
+    if(!item){ showToast('Data antrean tidak ditemukan.', 'error'); return; }
+    const root = document.getElementById('modalRoot');
+    if(!root) return;
+    root.innerHTML = this.queueDetailModal(item);
+    const close = () => { root.innerHTML = ''; };
+    document.getElementById('closeQueueDetailModal')?.addEventListener('click', close);
+    document.getElementById('closeQueueDetailModalBottom')?.addEventListener('click', close);
+    root.querySelector('[data-queue-modal-backdrop]')?.addEventListener('click', (e)=>{ if(e.target?.hasAttribute('data-queue-modal-backdrop')) close(); });
+    root.querySelector('[data-queue-delete-from-modal]')?.addEventListener('click', async (e)=>{
+      await this.deleteQueueItem(e.currentTarget.dataset.queueDeleteFromModal);
+      close();
+    });
+  },
+  async deleteQueueItem(id){
+    if(!id) return;
+    const item = (APP.state.syncQueue || []).find(x => x.id === id) || await DB.get(STORES.syncQueue, id);
+    if(!item){ showToast('Data antrean sudah tidak ada.', 'info'); return; }
+    const ok = confirm(`Hapus antrean sync ini?\n\nStore: ${item.storeName || '-'}\nAksi: ${item.op || '-'}\nKunci: ${item.recordKey || '-'}\n\nData ini tidak akan ikut disinkronkan ke Google Sheets.`);
+    if(!ok) return;
+    await DB.delete(STORES.syncQueue, id);
+    delete this.queueSelection[id];
+    await this.refreshStats();
+    showToast('Antrean sync berhasil dihapus.');
+    if(APP.state.currentPage === 'dashboard' || APP.state.currentPage === 'syncFailed') render();
+  },
   bindFailedEvents(){
     document.getElementById('selectAllQueueBtn')?.addEventListener('click', ()=>{
       (APP.state.syncQueue || []).filter(x=>['failed','pending'].includes(x.status)).forEach(x=>this.queueSelection[x.id]=true); render();
@@ -419,6 +534,8 @@ DB.delete = async (store, key) => {
       render();
     });
     document.querySelectorAll('[data-queue-check]').forEach(el=>el.addEventListener('change', ()=>{ this.queueSelection[el.dataset.queueCheck] = !!el.checked; }));
+    document.querySelectorAll('[data-queue-detail]').forEach(btn=>btn.addEventListener('click', ()=> this.openQueueDetail(btn.dataset.queueDetail)));
+    document.querySelectorAll('[data-queue-delete]').forEach(btn=>btn.addEventListener('click', ()=> this.deleteQueueItem(btn.dataset.queueDelete)));
   }
 };
 
