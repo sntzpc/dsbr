@@ -191,8 +191,8 @@ function moduleQuickFilterBar(tab, context='module'){
     </div>
   </div>`;
 }
-function mirroredSetorRows(){
-  return getFilteredModuleTransactions('DEPOSIT').map(tx=>{
+function mirroredSetorRows(filters = APP.state.moduleFilters){
+  return getFilteredModuleTransactions('DEPOSIT', filters).map(tx=>{
     const dec = txDecorated(tx);
     const setors = linkedSetorsForDeposit(tx.id);
     const latestSetor = setors[0] || null;
@@ -216,6 +216,63 @@ function mirroredSetorRows(){
       statusLabel: !setors.length ? 'Belum Disetor' : (setorNominal >= target ? 'Setor Penuh' : 'Setor Sebagian')
     };
   });
+}
+
+/*
+  PATCH 2026-05-03 - Summary Deposit/Setoran/Piutang/Bagi Hasil harus tally dengan tabel.
+  Penyebab lama: kartu ringkasan memakai aggregateModuleReport() yang memfilter DEPOSIT dan SETOR
+  berdasarkan tanggal transaksi masing-masing. Sementara tabel Setoran bersifat deposit-centric:
+  baris berasal dari DEPOSIT yang tampil, lalu setoran/cicilan dihitung dari linkedDepositId.
+  Akibatnya Total Setoran dan Piutang bisa berbeda dari total tabel ketika ada filter tanggal,
+  filter pintar, atau deposit dibayar cicilan pada tanggal berbeda.
+*/
+function moduleSettlementVisibleRows(filters = APP.state.moduleFilters){
+  return filterMirroredSetorRows(mirroredSetorRows(filters), filters);
+}
+
+function profitPartsFromSetorTx(setorTx, sourceDeposit){
+  const base = findBase(sourceDeposit?.baseId);
+  if(!setorTx || !sourceDeposit || !base) return { actorShare:0, baseShare:0, ownerShare:0, partnerShare:0, total:0 };
+  const grossEquivalent = realizedGrossFromSetor(setorTx, sourceDeposit);
+  const actorShare = roundMoney2(grossEquivalent * (actorSharePct(base, sourceDeposit.resellerId || '') / 100));
+  const baseShare = sourceDeposit.resellerId ? roundMoney2(grossEquivalent * (Number(base.shares.baseFromReseller||0) / 100)) : 0;
+  const ownerShare = roundMoney2(grossEquivalent * (Number(base.shares.owner||0) / 100));
+  const partnerShare = roundMoney2(grossEquivalent * (Number(base.shares.partner||0) / 100));
+  return {
+    actorShare,
+    baseShare,
+    ownerShare,
+    partnerShare,
+    total: roundMoney2(actorShare + baseShare + ownerShare + partnerShare)
+  };
+}
+
+function moduleSettlementSummary(filters = APP.state.moduleFilters){
+  const rows = moduleSettlementVisibleRows(filters);
+  const depositIds = new Set(rows.map(r=>r.depositId));
+  const setors = (APP.state.moduleTransactions || []).filter(tx => tx.moduleType === 'SETOR' && depositIds.has(tx.linkedDepositId));
+  const totals = rows.reduce((a,r)=>({
+    deposit: roundMoney2(a.deposit + Number(r.depositNominal||0)),
+    target: roundMoney2(a.target + Number(r.targetSetor||0)),
+    setor: roundMoney2(a.setor + Number(r.setorNominal||0)),
+    piutang: roundMoney2(a.piutang + Number(r.receivable||0)),
+    depositCount: a.depositCount + 1,
+    setorCount: a.setorCount + Number(r.setorCount||0)
+  }), { deposit:0, target:0, setor:0, piutang:0, depositCount:0, setorCount:0 });
+
+  const profit = setors.reduce((a,setorTx)=>{
+    const sourceDeposit = APP.state.moduleTransactions.find(x=>x.id===setorTx.linkedDepositId && x.moduleType==='DEPOSIT');
+    const parts = profitPartsFromSetorTx(setorTx, sourceDeposit);
+    return {
+      actorShare: roundMoney2(a.actorShare + parts.actorShare),
+      baseShare: roundMoney2(a.baseShare + parts.baseShare),
+      ownerShare: roundMoney2(a.ownerShare + parts.ownerShare),
+      partnerShare: roundMoney2(a.partnerShare + parts.partnerShare),
+      total: roundMoney2(a.total + parts.total)
+    };
+  }, { actorShare:0, baseShare:0, ownerShare:0, partnerShare:0, total:0 });
+
+  return { rows, totals, profit };
 }
 function startSetorFromDeposit(depositId){
   const tx = APP.state.moduleTransactions.find(x=>x.id===depositId && x.moduleType==='DEPOSIT');
@@ -251,51 +308,72 @@ function startSetorFromDeposit(depositId){
 }
 function aggregateModuleReport(filters = APP.state.moduleFilters){
   const rowsMap = new Map();
-  const txs = getFilteredModuleTransactions('ALL', filters);
-  for(const tx of txs){
-    if(!['DEPOSIT','SETOR'].includes(tx.moduleType)) continue;
+  const depositRows = filterDepositRows(getFilteredModuleTransactions('DEPOSIT', filters), filters);
+
+  for(const tx of depositRows){
     const base = findBase(tx.baseId); if(!base) continue;
     const key = tx.actorKey || actorKey(tx.baseId, tx.resellerId || '');
-    if(!rowsMap.has(key)) rowsMap.set(key, { baseId:tx.baseId, baseName:base.name, actorKey:key, actorName:actorLabel(base, tx.resellerId), mode:base.mode, gross:0, expected:0, actual:0, receivable:0, ownerShare:0, partnerShare:0, actorShare:0, baseShare:0, deposits:0, setors:0 });
+    if(!rowsMap.has(key)) rowsMap.set(key, {
+      baseId:tx.baseId,
+      baseName:base.name,
+      actorKey:key,
+      actorName:actorLabel(base, tx.resellerId),
+      mode:base.mode,
+      gross:0,
+      expected:0,
+      actual:0,
+      receivable:0,
+      ownerShare:0,
+      partnerShare:0,
+      actorShare:0,
+      baseShare:0,
+      deposits:0,
+      setors:0
+    });
+
     const row = rowsMap.get(key);
-    if(tx.moduleType==='DEPOSIT'){
-      row.gross += Number(tx.nominal||0);
-      row.expected += Number(tx.expectedSetor||0);
-      row.deposits += 1;
-    }
-    if(tx.moduleType==='SETOR'){
-      row.actual += Number(tx.nominal||0);
-      row.setors += 1;
-      const sourceDeposit = tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') : null;
-      const sourceBase = sourceDeposit ? findBase(sourceDeposit.baseId) : base;
-      if(sourceDeposit && sourceBase){
-        const grossEquivalent = realizedGrossFromSetor(tx, sourceDeposit);
-        row.actorShare += roundMoney2(grossEquivalent * (actorSharePct(sourceBase, sourceDeposit.resellerId || '') / 100));
-        row.ownerShare += roundMoney2(grossEquivalent * (Number(sourceBase.shares.owner||0) / 100));
-        row.partnerShare += roundMoney2(grossEquivalent * (Number(sourceBase.shares.partner||0) / 100));
-        row.baseShare += sourceDeposit.resellerId ? roundMoney2(grossEquivalent * (Number(sourceBase.shares.baseFromReseller||0) / 100)) : 0;
-      }
+    const target = Number(tx.expectedSetor||0);
+    const setors = linkedSetorsForDeposit(tx.id);
+    const paid = setors.reduce((sum,x)=>sum+Number(x.nominal||0),0);
+
+    row.gross = roundMoney2(row.gross + Number(tx.nominal||0));
+    row.expected = roundMoney2(row.expected + target);
+    row.actual = roundMoney2(row.actual + paid);
+    row.receivable = roundMoney2(row.receivable + Math.max(0, target - paid));
+    row.deposits += 1;
+    row.setors += setors.length;
+
+    for(const setorTx of setors){
+      const parts = profitPartsFromSetorTx(setorTx, tx);
+      row.actorShare = roundMoney2(row.actorShare + parts.actorShare);
+      row.baseShare = roundMoney2(row.baseShare + parts.baseShare);
+      row.ownerShare = roundMoney2(row.ownerShare + parts.ownerShare);
+      row.partnerShare = roundMoney2(row.partnerShare + parts.partnerShare);
     }
   }
+
   const rows = [...rowsMap.values()].map(r => {
     const actorShareDisplay = Number(r.actorShare || 0) > 0 ? Number(r.actorShare || 0) : Number(r.baseShare || 0);
-    return { ...r, receivable: Math.max(0, r.expected - r.actual), actorShareDisplay };
+    return { ...r, actorShareDisplay };
   }).sort((a,b)=>a.baseName.localeCompare(b.baseName)||a.actorName.localeCompare(b.actorName));
+
   const grand = rows.reduce((a,r)=>({
-    gross:a.gross+r.gross,
-    expected:a.expected+r.expected,
-    actual:a.actual+r.actual,
-    receivable:a.receivable+r.receivable,
-    ownerShare:a.ownerShare+r.ownerShare,
-    partnerShare:a.partnerShare+r.partnerShare,
-    actorShare:a.actorShare+r.actorShare,
-    actorShareDisplay:a.actorShareDisplay+r.actorShareDisplay,
-    baseShare:a.baseShare+r.baseShare,
+    gross:roundMoney2(a.gross+r.gross),
+    expected:roundMoney2(a.expected+r.expected),
+    actual:roundMoney2(a.actual+r.actual),
+    receivable:roundMoney2(a.receivable+r.receivable),
+    ownerShare:roundMoney2(a.ownerShare+r.ownerShare),
+    partnerShare:roundMoney2(a.partnerShare+r.partnerShare),
+    actorShare:roundMoney2(a.actorShare+r.actorShare),
+    actorShareDisplay:roundMoney2(a.actorShareDisplay+r.actorShareDisplay),
+    baseShare:roundMoney2(a.baseShare+r.baseShare),
     deposits:a.deposits+r.deposits,
     setors:a.setors+r.setors
   }), { gross:0, expected:0, actual:0, receivable:0, ownerShare:0, partnerShare:0, actorShare:0, actorShareDisplay:0, baseShare:0, deposits:0, setors:0 });
+
   return { rows, grand };
 }
+
 function computedPiutangRows(filters = APP.state.moduleFilters){
   return aggregateModuleReport(filters).rows
     .filter(r=>Number(r.receivable||0) > 0)
@@ -314,7 +392,9 @@ function computedPiutangRows(filters = APP.state.moduleFilters){
 }
 function computedProfitRows(filters = APP.state.moduleFilters){
   const rows = [];
-  const filteredSetors = getFilteredModuleTransactions('SETOR', filters);
+  const visibleDepositIds = new Set(moduleSettlementVisibleRows(filters).map(r=>r.depositId));
+  const filteredSetors = (APP.state.moduleTransactions || [])
+    .filter(tx => tx.moduleType === 'SETOR' && visibleDepositIds.has(tx.linkedDepositId));
   for(const tx of filteredSetors){
     const sourceDeposit = tx.linkedDepositId ? APP.state.moduleTransactions.find(x=>x.id===tx.linkedDepositId && x.moduleType==='DEPOSIT') : null;
     if(!sourceDeposit) continue;
@@ -406,14 +486,13 @@ function moduleFormSection(meta){
   </div>`;
 }
 function summaryCardsForTab(tab){
-  const type = moduleTabToType(tab);
   if(tab==='deposit' || tab==='setor'){
-    const auto = aggregateModuleReport();
+    const summary = moduleSettlementSummary(APP.state.moduleFilters);
     return `<div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
-      ${card('Total Deposit', `Rp ${rupiah(auto.grand.gross)}`, `${auto.grand.deposits} transaksi`, 'text-emerald-600')}
-      ${card('Total Setoran', `Rp ${rupiah(auto.grand.actual)}`, `${auto.grand.setors} transaksi`, 'text-blue-600')}
-      ${card('Piutang Otomatis', `Rp ${rupiah(auto.grand.receivable)}`, 'Deposit - setoran', auto.grand.receivable>0?'text-amber-600':'text-emerald-600')}
-      ${card('Bagi Hasil Otomatis', `Rp ${rupiah(auto.grand.actorShare + auto.grand.baseShare + auto.grand.ownerShare + auto.grand.partnerShare)}`, 'Dihitung dari setoran', 'text-purple-600')}
+      ${card('Total Deposit', `Rp ${rupiah(summary.totals.deposit)}`, `${summary.totals.depositCount} transaksi`, 'text-emerald-600')}
+      ${card('Total Setoran', `Rp ${rupiah(summary.totals.setor)}`, `${summary.totals.setorCount} cicilan/setoran`, 'text-blue-600')}
+      ${card('Piutang Otomatis', `Rp ${rupiah(summary.totals.piutang)}`, 'Sama dengan total kolom Piutang tabel', summary.totals.piutang>0?'text-amber-600':'text-emerald-600')}
+      ${card('Bagi Hasil Otomatis', `Rp ${rupiah(summary.profit.total)}`, 'Dihitung dari setoran pada baris tampil', 'text-purple-600')}
     </div>`;
   }
   return '';

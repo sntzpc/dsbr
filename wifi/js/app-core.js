@@ -245,30 +245,96 @@ function balanceReserveAt(end=''){
   return typeof reserveSummaryByFund === 'function' ? reserveSummaryByFund(reserveFilters) : { total:{ balance:0 }, funds:{} };
 }
 function receivableSnapshotAt(end=''){
-  const rows = [...APP.state.moduleTransactions]
-    .filter(x => !end || x.date <= end)
-    .filter(x => ['DEPOSIT','SETOR'].includes(x.moduleType));
-  const actorMap = new Map();
-  for(const tx of rows){
-    const base = findBase(tx.baseId);
-    if(!base) continue;
-    const key = tx.actorKey || actorKey(tx.baseId, tx.resellerId || '');
-    if(!actorMap.has(key)) actorMap.set(key, { actorKey:key, baseId:tx.baseId, baseName:base.name, actorName:actorLabel(base, tx.resellerId), receivable:0 });
-    const row = actorMap.get(key);
-    if(tx.moduleType === 'DEPOSIT') row.receivable += Number(tx.expectedSetor || 0);
-    if(tx.moduleType === 'SETOR') row.receivable -= Number(tx.nominal || 0);
+  /*
+    PATCH 2026-05-03 - Dashboard Piutang harus tally dengan tabel Deposit/Setoran.
+    Rumus lama menjumlahkan DEPOSIT lalu mengurangi SETOR per aktor berdasarkan tanggal transaksi.
+    Ini bisa meleset ketika setoran berupa cicilan/linkedDepositId, ada beberapa deposit pada aktor yang sama,
+    atau tanggal setoran berbeda dengan tanggal deposit.
+
+    Rumus baru dibuat deposit-centric:
+    1. Ambil hanya DEPOSIT yang tanggalnya <= akhir periode dashboard.
+    2. Untuk setiap DEPOSIT, hitung SETOR yang benar-benar terhubung melalui linkedDepositId.
+    3. Jika dashboard memakai akhir periode, hanya SETOR sampai tanggal akhir periode yang mengurangi piutang.
+    4. Piutang = max(0, expectedSetor deposit - total setoran terhubung).
+    Dengan cara ini angka dashboard sama dengan logika tabel Setoran/Piutang di Modul Transaksi.
+  */
+  const cutoff = end || '';
+  const deposits = (APP.state.moduleTransactions || [])
+    .filter(tx => tx.moduleType === 'DEPOSIT')
+    .filter(tx => !cutoff || String(tx.date || '') <= cutoff);
+
+  const setorsByDeposit = new Map();
+  for(const tx of (APP.state.moduleTransactions || [])){
+    if(tx.moduleType !== 'SETOR' || !tx.linkedDepositId) continue;
+    if(cutoff && String(tx.date || '') > cutoff) continue;
+    const key = tx.linkedDepositId;
+    if(!setorsByDeposit.has(key)) setorsByDeposit.set(key, []);
+    setorsByDeposit.get(key).push(tx);
   }
-  const detail = [...actorMap.values()].map(r=>({ ...r, receivable:Math.max(0, Number(r.receivable||0)) })).filter(r=>r.receivable>0).sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
+
+  const actorMap = new Map();
+  const depositDetail = [];
+
+  for(const dep of deposits){
+    const base = findBase(dep.baseId);
+    if(!base) continue;
+    const key = dep.actorKey || actorKey(dep.baseId, dep.resellerId || '');
+    const target = Number(dep.expectedSetor || 0);
+    const paid = (setorsByDeposit.get(dep.id) || []).reduce((sum, setor)=>sum + Number(setor.nominal || 0), 0);
+    const receivable = roundMoney2(Math.max(0, target - paid));
+    if(receivable <= 0) continue;
+
+    depositDetail.push({
+      depositId: dep.id,
+      actorKey: key,
+      baseId: dep.baseId,
+      baseName: base.name,
+      actorName: actorLabel(base, dep.resellerId || ''),
+      target,
+      paid: roundMoney2(paid),
+      receivable,
+      date: dep.date,
+      time: dep.time
+    });
+
+    if(!actorMap.has(key)){
+      actorMap.set(key, {
+        actorKey: key,
+        baseId: dep.baseId,
+        baseName: base.name,
+        actorName: actorLabel(base, dep.resellerId || ''),
+        receivable: 0,
+        deposits: 0
+      });
+    }
+    const row = actorMap.get(key);
+    row.receivable = roundMoney2(Number(row.receivable || 0) + receivable);
+    row.deposits += 1;
+  }
+
+  const detail = [...actorMap.values()]
+    .filter(r => Number(r.receivable || 0) > 0)
+    .sort((a,b)=>Number(b.receivable||0)-Number(a.receivable||0) || a.baseName.localeCompare(b.baseName) || a.actorName.localeCompare(b.actorName));
+
   const baseMap = new Map();
   for(const row of detail){
     const key = row.baseId || '__NOBASE__';
-    if(!baseMap.has(key)) baseMap.set(key, { baseId:key, baseName:row.baseName || 'Tanpa Base', receivable:0, actors:0 });
+    if(!baseMap.has(key)) baseMap.set(key, { baseId:key, baseName:row.baseName || 'Tanpa Base', receivable:0, actors:0, deposits:0 });
     const item = baseMap.get(key);
-    item.receivable += Number(row.receivable||0);
+    item.receivable = roundMoney2(Number(item.receivable || 0) + Number(row.receivable || 0));
     item.actors += 1;
+    item.deposits += Number(row.deposits || 0);
   }
-  const perBase = [...baseMap.values()].sort((a,b)=>b.receivable-a.receivable || a.baseName.localeCompare(b.baseName));
-  return { detail, perBase, total:perBase.reduce((s,x)=>s+Number(x.receivable||0),0) };
+
+  const perBase = [...baseMap.values()]
+    .sort((a,b)=>Number(b.receivable||0)-Number(a.receivable||0) || a.baseName.localeCompare(b.baseName));
+
+  return {
+    detail,
+    depositDetail: depositDetail.sort((a,b)=>Number(b.receivable||0)-Number(a.receivable||0) || `${b.date || ''} ${b.time || ''}`.localeCompare(`${a.date || ''} ${a.time || ''}`)),
+    perBase,
+    total: roundMoney2(perBase.reduce((s,x)=>s+Number(x.receivable||0),0))
+  };
 }
 function cashSnapshotAt(end=''){
   const mainRows = [...APP.state.mainTransactions].filter(x => !end || x.date <= end);
