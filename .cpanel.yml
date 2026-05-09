@@ -1,10 +1,20 @@
 ---
 deployment:
   tasks:
+    # Sesuaikan DEPLOYPATH jika Dashboard berada di subfolder, misalnya:
+    # export DEPLOYPATH=/home/sntp6755/public_html/dashboard/
     - export DEPLOYPATH=/home/sntp6755/public_html/
+    - /bin/mkdir -p $DEPLOYPATH
     - /bin/cp index.html $DEPLOYPATH
     - /bin/cp style.css $DEPLOYPATH
     - /bin/cp admin.html $DEPLOYPATH
     - /bin/cp admin.js $DEPLOYPATH
     - /bin/cp script.js $DEPLOYPATH
     - /bin/cp config.js $DEPLOYPATH
+    - /bin/cp api.php $DEPLOYPATH
+    - /bin/cp db_config.php $DEPLOYPATH
+    - /bin/cp install.php $DEPLOYPATH
+    - /bin/cp .htaccess $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH/migration
+    - /bin/cp migration/schema.sql $DEPLOYPATH/migration/schema.sql
+    - /bin/cp migration/data_seed.json $DEPLOYPATH/migration/data_seed.json
