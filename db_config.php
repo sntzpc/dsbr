@@ -21,5 +21,5 @@ define('INSTALL_KEY', 'INSTALL_DASHBOARD_31B267YLXB');
 define('SESSION_TTL_SECONDS', 6 * 60 * 60);
 
 // CORS: kosong = same-origin saja. Isi domain GitHub Pages jika frontend masih dipanggil dari sana.
-// Contoh: define('ALLOWED_ORIGIN', 'https://sntzpc.github.io');
+define('ALLOWED_ORIGIN', 'https://sntzpc.github.io');
 define('ALLOWED_ORIGIN', '');
